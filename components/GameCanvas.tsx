@@ -12,7 +12,7 @@ import {
   SliceEffect,
   getDifficultyStage
 } from '@/lib/gameConfig';
-import { createFlyingItem, distancePointToSegment, getGestureFruitScore, isOutOfBounds, randomBatchSize } from '@/lib/gamePhysics';
+import { createFlyingItem, distancePointToSegment, getComboBonus, getGestureFruitScore, isOutOfBounds, randomBatchSize } from '@/lib/gamePhysics';
 import { playSound } from '@/lib/sound';
 import { setBestScore } from '@/lib/storage';
 
@@ -84,6 +84,8 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const endAtRef = useRef(0);
   const nextSpawnAtRef = useRef(0);
   const gestureFruitHitsRef = useRef(0);
+  const gestureBaseScoreRef = useRef(0);
+  const gestureBombPenaltyRef = useRef(0);
   const gesturePointRef = useRef<SlashPoint | null>(null);
   const rushModeRef = useRef(false);
   const rushBannerShownRef = useRef(false);
@@ -159,26 +161,34 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     clearGestureTimer();
 
     const fruitHits = gestureFruitHitsRef.current;
-    if (fruitHits <= 0) return;
+    const bombPenalty = gestureBombPenaltyRef.current;
+    if (fruitHits <= 0 && bombPenalty === 0) return;
 
     const point = gesturePointRef.current;
-    const points = getGestureFruitScore(fruitHits);
-    updateScore(scoreRef.current + points);
-    playSound(fruitHits >= 2 ? 'combo' : 'slice', soundEnabled);
+    const comboBonus = getComboBonus(fruitHits);
+    const totalPoints = getGestureFruitScore(gestureBaseScoreRef.current, fruitHits, bombPenalty);
+    updateScore(scoreRef.current + totalPoints);
+    if (fruitHits > 0) {
+      playSound(fruitHits >= 2 ? 'combo' : 'slice', soundEnabled);
+    }
     if (fruitHits >= 2) {
       triggerShake();
     }
-    pushEffects([
-      createEffect({
-        kind: fruitHits >= 2 ? 'combo' : 'score',
-        x: point?.x ?? window.innerWidth / 2,
-        y: point?.y ?? window.innerHeight / 3,
-        text: fruitHits >= 2 ? `Combo x${fruitHits}  +${points}` : '+1',
-        color: fruitHits >= 2 ? '#f97316' : '#16a34a'
-      })
-    ]);
+    if (comboBonus > 0) {
+      pushEffects([
+        createEffect({
+          kind: 'combo',
+          x: point?.x ?? window.innerWidth / 2,
+          y: point?.y ?? window.innerHeight / 3,
+          text: `Combo +${comboBonus}`,
+          color: '#f97316'
+        })
+      ]);
+    }
 
     gestureFruitHitsRef.current = 0;
+    gestureBaseScoreRef.current = 0;
+    gestureBombPenaltyRef.current = 0;
     gesturePointRef.current = null;
   }, [clearGestureTimer, pushEffects, soundEnabled, triggerShake, updateScore]);
 
@@ -318,6 +328,8 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     pointerDownRef.current = true;
     clearGestureTimer();
     gestureFruitHitsRef.current = 0;
+    gestureBaseScoreRef.current = 0;
+    gestureBombPenaltyRef.current = 0;
     gesturePointRef.current = null;
 
     const point = getPointFromEvent(event, stageRef.current);
@@ -343,6 +355,8 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     const newEffects: SliceEffect[] = [];
     let bombHits = 0;
     let fruitHits = 0;
+    let bombPenalty = 0;
+    let fruitBaseScore = 0;
 
     itemsRef.current = itemsRef.current.map((item) => {
       if (item.sliced) return item;
@@ -352,13 +366,16 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
 
       if (item.kind === 'bomb') {
         bombHits += 1;
+        bombPenalty += item.points;
         newEffects.push(
-          createEffect({ kind: 'bomb', x: item.x, y: item.y, text: '-5', color: '#dc2626' }),
+          createEffect({ kind: 'bomb', x: item.x, y: item.y, text: String(item.points), color: '#dc2626' }),
           createEffect({ kind: 'sliced', x: item.x, y: item.y, asset: '/assets/explosion.png' })
         );
       } else {
         fruitHits += 1;
+        fruitBaseScore += item.points;
         newEffects.push(
+          createEffect({ kind: 'score', x: item.x, y: item.y - item.radius * 0.58, text: `+${item.points}`, color: item.juice }),
           createEffect({ kind: 'splash', x: item.x, y: item.y, asset: '/assets/juice-splash.png', color: item.juice }),
           createEffect({ kind: 'sliced', x: item.x, y: item.y, asset: item.slicedAsset })
         );
@@ -369,12 +386,15 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
 
     if (fruitHits > 0) {
       gestureFruitHitsRef.current += fruitHits;
+      gestureBaseScoreRef.current += fruitBaseScore;
       gesturePointRef.current = point;
       scheduleGestureCommit();
     }
 
     if (bombHits > 0) {
-      updateScore(scoreRef.current - bombHits * 5);
+      gestureBombPenaltyRef.current += bombPenalty;
+      gesturePointRef.current = point;
+      scheduleGestureCommit();
       playSound('bomb', soundEnabled);
       triggerShake();
     }
@@ -495,6 +515,8 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
             key={item.id}
             src={item.asset}
             alt={item.label}
+            data-item-kind={item.kind}
+            data-item-points={item.points}
             draggable={false}
             className="pointer-events-none absolute object-contain drop-shadow-[0_14px_16px_rgba(20,83,45,0.22)]"
             style={{

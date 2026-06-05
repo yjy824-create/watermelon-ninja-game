@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import GameCanvas from './GameCanvas';
 import ShareCard from './ShareCard';
 import SoundToggle from './SoundToggle';
+import { COMBO_BONUS, FRUIT_SCORE_MAP } from '@/lib/gameConfig';
 import { getPlayerRank } from '@/lib/rank';
 import { getSoundEnabled, initializeSound, playSound, setSoundEnabled } from '@/lib/sound';
 import { getBestScore } from '@/lib/storage';
@@ -138,8 +139,9 @@ export default function GameShell() {
 
           <div className="mt-6 grid gap-3 text-left text-sm font-bold leading-6 text-emerald-900">
             <div className="rounded-[8px] bg-emerald-50 p-4 shadow-inner">
-              <p>水果 +1 分，连切 2 个总计 +3 分。</p>
-              <p>连切 3 个以上总计 +5 分，炸弹 -5 分。</p>
+              <p>西瓜 +{FRUIT_SCORE_MAP.watermelon}，苹果 +{FRUIT_SCORE_MAP.apple}，香蕉 +{FRUIT_SCORE_MAP.banana}，凤梨 +{FRUIT_SCORE_MAP.pineapple}。</p>
+              <p>连切 2 个水果额外 +{COMBO_BONUS.twoFruits}，连切 3 个以上额外 +{COMBO_BONUS.threeOrMoreFruits}。</p>
+              <p>炸弹 {FRUIT_SCORE_MAP.bomb} 分，不计入 Combo。</p>
               <p>漏掉水果不扣分，分数不会低于 0。</p>
             </div>
           </div>

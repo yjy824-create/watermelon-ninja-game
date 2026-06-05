@@ -1,4 +1,4 @@
-import { BOMB_TYPE, DifficultyStage, FRUIT_TYPES, FlyingItem, FlyingItemKind } from './gameConfig';
+import { BOMB_TYPE, COMBO_BONUS, DifficultyStage, FRUIT_SPAWN_WEIGHTS, FRUIT_TYPES, FlyingItem, FlyingItemKind } from './gameConfig';
 
 export function distancePointToSegment(
   px: number,
@@ -20,10 +20,14 @@ export function distancePointToSegment(
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
-export function getGestureFruitScore(hitCount: number): number {
-  if (hitCount >= 3) return 5;
-  if (hitCount === 2) return 3;
-  return hitCount;
+export function getComboBonus(hitCount: number): number {
+  if (hitCount >= 3) return COMBO_BONUS.threeOrMoreFruits;
+  if (hitCount === 2) return COMBO_BONUS.twoFruits;
+  return 0;
+}
+
+export function getGestureFruitScore(baseScore: number, hitCount: number, bombPenalty = 0): number {
+  return baseScore + getComboBonus(hitCount) + bombPenalty;
 }
 
 export function randomBatchSize(stage: DifficultyStage): number {
@@ -31,11 +35,21 @@ export function randomBatchSize(stage: DifficultyStage): number {
   return stage.minBatchSize + Math.floor(Math.random() * range);
 }
 
+function selectWeightedFruit(): (typeof FRUIT_TYPES)[number] {
+  const totalWeight = FRUIT_TYPES.reduce((total, fruit) => total + FRUIT_SPAWN_WEIGHTS[fruit.type], 0);
+  let roll = Math.random() * totalWeight;
+
+  for (const fruit of FRUIT_TYPES) {
+    roll -= FRUIT_SPAWN_WEIGHTS[fruit.type];
+    if (roll <= 0) return fruit;
+  }
+
+  return FRUIT_TYPES[0];
+}
+
 export function createFlyingItem(width: number, height: number, stage: DifficultyStage): FlyingItem {
   const isBomb = Math.random() < stage.bombChance;
-  const selected: FlyingItemKind = isBomb
-    ? BOMB_TYPE
-    : FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
+  const selected: FlyingItemKind = isBomb ? BOMB_TYPE : selectWeightedFruit();
   const x = 36 + Math.random() * Math.max(1, width - 72);
   const centerBias = x < width / 2 ? 1 : -1;
   const radius = isBomb ? 36 : 40 + Math.random() * 7;
@@ -47,6 +61,7 @@ export function createFlyingItem(width: number, height: number, stage: Difficult
     asset: selected.asset,
     slicedAsset: selected.slicedAsset,
     juice: selected.juice,
+    points: selected.points,
     x,
     y: height + radius + 16,
     vx: centerBias * (1.2 + Math.random() * 2.4) * stage.speedMultiplier,

@@ -20,6 +20,26 @@ export const FINAL_COUNTDOWN_CONFIG = {
   ]
 } as const;
 
+export const FRUIT_SCORE_MAP = {
+  watermelon: 1,
+  apple: 2,
+  banana: 3,
+  pineapple: 5,
+  bomb: -5
+} as const;
+
+export const FRUIT_SPAWN_WEIGHTS = {
+  watermelon: 40,
+  apple: 25,
+  banana: 20,
+  pineapple: 15
+} as const;
+
+export const COMBO_BONUS = {
+  twoFruits: 2,
+  threeOrMoreFruits: 5
+} as const;
+
 export const DIFFICULTY_STAGES = [
   {
     id: 'warmup',
@@ -59,7 +79,7 @@ export const FRUIT_TYPES = [
   {
     type: 'watermelon',
     label: '西瓜',
-    points: 1,
+    points: FRUIT_SCORE_MAP.watermelon,
     asset: '/assets/watermelon.png',
     slicedAsset: '/assets/watermelon-sliced.png',
     juice: '#ef4444'
@@ -67,7 +87,7 @@ export const FRUIT_TYPES = [
   {
     type: 'pineapple',
     label: '凤梨',
-    points: 1,
+    points: FRUIT_SCORE_MAP.pineapple,
     asset: '/assets/pineapple.png',
     slicedAsset: '/assets/pineapple-sliced.png',
     juice: '#facc15'
@@ -75,7 +95,7 @@ export const FRUIT_TYPES = [
   {
     type: 'apple',
     label: '苹果',
-    points: 1,
+    points: FRUIT_SCORE_MAP.apple,
     asset: '/assets/apple.png',
     slicedAsset: '/assets/apple-sliced.png',
     juice: '#f87171'
@@ -83,7 +103,7 @@ export const FRUIT_TYPES = [
   {
     type: 'banana',
     label: '香蕉',
-    points: 1,
+    points: FRUIT_SCORE_MAP.banana,
     asset: '/assets/banana.png',
     slicedAsset: '/assets/banana-sliced.png',
     juice: '#fde047'
@@ -93,7 +113,7 @@ export const FRUIT_TYPES = [
 export const BOMB_TYPE = {
   type: 'bomb',
   label: '炸弹',
-  points: -5,
+  points: FRUIT_SCORE_MAP.bomb,
   asset: '/assets/bomb.png',
   slicedAsset: '/assets/explosion.png',
   juice: '#fb923c'
@@ -109,6 +129,7 @@ export interface FlyingItem {
   asset: string;
   slicedAsset: string;
   juice: string;
+  points: number;
   x: number;
   y: number;
   vx: number;
