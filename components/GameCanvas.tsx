@@ -1,12 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlyingItem, GAME_DURATION_SECONDS, SlashPoint, SliceEffect } from '@/lib/gameConfig';
-import { createFlyingItem, distancePointToSegment, getGestureFruitScore, isOutOfBounds } from '@/lib/gamePhysics';
+import SoundToggle from './SoundToggle';
+import { DifficultyStage, FlyingItem, GAME_DURATION_SECONDS, SlashPoint, SliceEffect, getDifficultyStage } from '@/lib/gameConfig';
+import { createFlyingItem, distancePointToSegment, getGestureFruitScore, isOutOfBounds, randomBatchSize } from '@/lib/gamePhysics';
+import { playSound } from '@/lib/sound';
 import { setBestScore } from '@/lib/storage';
 
 interface Props {
   bestScore: number;
+  soundEnabled: boolean;
+  onSoundToggle: () => void;
   onFinish: (score: number, bestScore: number) => void;
 }
 
@@ -51,7 +55,7 @@ function TrailSegment({ from, to }: { from: SlashPoint; to: SlashPoint }) {
   );
 }
 
-export default function GameCanvas({ bestScore, onFinish }: Props) {
+export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onFinish }: Props) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const itemsRef = useRef<FlyingItem[]>([]);
   const slashRef = useRef<SlashPoint[]>([]);
@@ -72,6 +76,7 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
   const [effects, setEffects] = useState<SliceEffect[]>([]);
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
+  const [difficultyStage, setDifficultyStage] = useState<DifficultyStage>(() => getDifficultyStage(GAME_DURATION_SECONDS));
 
   const clearGestureTimer = useCallback(() => {
     if (gestureTimerRef.current !== null) {
@@ -100,6 +105,7 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
     const point = gesturePointRef.current;
     const points = getGestureFruitScore(fruitHits);
     updateScore(scoreRef.current + points);
+    playSound(fruitHits >= 2 ? 'combo' : 'slice', soundEnabled);
     pushEffects([
       createEffect({
         kind: fruitHits >= 2 ? 'combo' : 'score',
@@ -112,7 +118,7 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
 
     gestureFruitHitsRef.current = 0;
     gesturePointRef.current = null;
-  }, [clearGestureTimer, pushEffects, updateScore]);
+  }, [clearGestureTimer, pushEffects, soundEnabled, updateScore]);
 
   const scheduleGestureCommit = useCallback(() => {
     clearGestureTimer();
@@ -134,8 +140,9 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
     const finalScore = scoreRef.current;
     const finalBest = Math.max(bestScore, finalScore);
     setBestScore(finalBest);
+    playSound('game-over', soundEnabled);
     onFinish(finalScore, finalBest);
-  }, [bestScore, clearGestureTimer, commitGestureScore, onFinish]);
+  }, [bestScore, clearGestureTimer, commitGestureScore, onFinish, soundEnabled]);
 
   useEffect(() => {
     const startAt = performance.now();
@@ -147,19 +154,19 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
     nextSpawnAtRef.current = startAt + 250;
     lastFrameAtRef.current = startAt;
 
-    const spawnItem = (now: number) => {
+    const spawnItem = (now: number, stage: DifficultyStage) => {
       const rect = stageRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const spawnCount = Math.random() < 0.24 ? 2 : 1;
+      const spawnCount = randomBatchSize(stage);
       const nextItems: FlyingItem[] = [];
 
       for (let index = 0; index < spawnCount; index += 1) {
-        nextItems.push(createFlyingItem(rect.width, rect.height));
+        nextItems.push(createFlyingItem(rect.width, rect.height, stage));
       }
 
       itemsRef.current = [...itemsRef.current, ...nextItems];
-      nextSpawnAtRef.current = now + 470 + Math.random() * 360;
+      nextSpawnAtRef.current = now + stage.spawnIntervalMs + Math.random() * 90;
     };
 
     const loop = (now: number) => {
@@ -169,8 +176,12 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
       const stepScale = delta / 16.67;
       lastFrameAtRef.current = now;
 
+      const remainingSeconds = Math.max(0, Math.ceil((endAtRef.current - now) / 1000));
+      const stage = getDifficultyStage(remainingSeconds);
+      setDifficultyStage((current) => (current.id === stage.id ? current : stage));
+
       if (now >= nextSpawnAtRef.current) {
-        spawnItem(now);
+        spawnItem(now, stage);
       }
 
       const rect = stageRef.current?.getBoundingClientRect();
@@ -194,7 +205,6 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
       setSlash([...slashRef.current]);
       setEffects([...effectsRef.current]);
 
-      const remainingSeconds = Math.max(0, Math.ceil((endAtRef.current - now) / 1000));
       setTimeLeft((current) => (current === remainingSeconds ? current : remainingSeconds));
 
       if (remainingSeconds <= 0) {
@@ -280,6 +290,7 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
 
     if (bombHits > 0) {
       updateScore(scoreRef.current - bombHits * 5);
+      playSound('bomb', soundEnabled);
     }
 
     if (newEffects.length > 0) {
@@ -311,7 +322,13 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#f6ffe7] text-emerald-950">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_12%,rgba(250,204,21,0.35),transparent_24%),radial-gradient(circle_at_82%_18%,rgba(45,212,191,0.32),transparent_22%),linear-gradient(180deg,#dcfce7_0%,#fef9c3_58%,#fcd34d_100%)]" />
+      <div
+        className={`absolute inset-0 ${
+          difficultyStage.id === 'sprint'
+            ? 'bg-[radial-gradient(circle_at_12%_12%,rgba(248,113,113,0.32),transparent_24%),radial-gradient(circle_at_82%_18%,rgba(250,204,21,0.38),transparent_22%),linear-gradient(180deg,#dcfce7_0%,#fef3c7_52%,#fb923c_100%)]'
+            : 'bg-[radial-gradient(circle_at_12%_12%,rgba(250,204,21,0.35),transparent_24%),radial-gradient(circle_at_82%_18%,rgba(45,212,191,0.32),transparent_22%),linear-gradient(180deg,#dcfce7_0%,#fef9c3_58%,#fcd34d_100%)]'
+        }`}
+      />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-emerald-400/35 to-transparent" />
 
       <header className="absolute left-0 right-0 top-0 z-20 px-3 pt-3 sm:px-5">
@@ -324,7 +341,10 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
           </div>
           <div className="rounded-[6px] bg-yellow-50 px-2 py-2">
             <p className="text-xs font-bold text-yellow-700">倒计时</p>
-            <p data-testid="timer-value" className="text-xl font-black text-orange-600 sm:text-2xl">
+            <p
+              data-testid="timer-value"
+              className={`text-xl font-black sm:text-2xl ${difficultyStage.id === 'sprint' ? 'text-red-600' : 'text-orange-600'}`}
+            >
               {timeLeft}s
             </p>
           </div>
@@ -334,6 +354,18 @@ export default function GameCanvas({ bestScore, onFinish }: Props) {
               {Math.max(bestScore, score)}
             </p>
           </div>
+        </div>
+        <div className="mx-auto mt-2 flex max-w-4xl items-center justify-between gap-2">
+          <div
+            data-testid="difficulty-stage"
+            data-stage-id={difficultyStage.id}
+            className={`rounded-[8px] border border-white/70 px-4 py-2 text-sm font-black shadow-soft backdrop-blur ${
+              difficultyStage.id === 'sprint' ? 'animate-sprint-pulse bg-red-500 text-white' : 'bg-white/82 text-emerald-800'
+            }`}
+          >
+            {difficultyStage.id === 'sprint' ? '最后冲刺！' : difficultyStage.label}
+          </div>
+          <SoundToggle enabled={soundEnabled} compact onToggle={onSoundToggle} />
         </div>
       </header>
 

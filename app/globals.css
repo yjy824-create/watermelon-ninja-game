@@ -49,6 +49,11 @@ img {
   filter: saturate(1.08);
 }
 
+.game-button:disabled {
+  transform: none;
+  filter: grayscale(0.15);
+}
+
 .score-pop {
   animation: score-pop 260ms ease;
 }
@@ -133,6 +138,18 @@ img {
   }
 }
 
+@keyframes sprint-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 16px 42px rgba(220, 38, 38, 0.20);
+  }
+  50% {
+    transform: scale(1.035);
+    box-shadow: 0 20px 54px rgba(220, 38, 38, 0.34);
+  }
+}
+
 .animate-score-float {
   animation: score-float 780ms ease-out forwards;
 }
@@ -151,4 +168,8 @@ img {
 
 .animate-result-in {
   animation: result-in 360ms ease-out both;
+}
+
+.animate-sprint-pulse {
+  animation: sprint-pulse 900ms ease-in-out infinite;
 }

@@ -1,4 +1,4 @@
-import { BOMB_TYPE, FRUIT_TYPES, FlyingItem, FlyingItemKind } from './gameConfig';
+import { BOMB_TYPE, DifficultyStage, FRUIT_TYPES, FlyingItem, FlyingItemKind } from './gameConfig';
 
 export function distancePointToSegment(
   px: number,
@@ -26,8 +26,13 @@ export function getGestureFruitScore(hitCount: number): number {
   return hitCount;
 }
 
-export function createFlyingItem(width: number, height: number): FlyingItem {
-  const isBomb = Math.random() < 0.13;
+export function randomBatchSize(stage: DifficultyStage): number {
+  const range = stage.maxBatchSize - stage.minBatchSize + 1;
+  return stage.minBatchSize + Math.floor(Math.random() * range);
+}
+
+export function createFlyingItem(width: number, height: number, stage: DifficultyStage): FlyingItem {
+  const isBomb = Math.random() < stage.bombChance;
   const selected: FlyingItemKind = isBomb
     ? BOMB_TYPE
     : FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
@@ -44,8 +49,8 @@ export function createFlyingItem(width: number, height: number): FlyingItem {
     juice: selected.juice,
     x,
     y: height + radius + 16,
-    vx: centerBias * (1.2 + Math.random() * 2.4),
-    vy: -(14.5 + Math.random() * 7),
+    vx: centerBias * (1.2 + Math.random() * 2.4) * stage.speedMultiplier,
+    vy: -(14.5 + Math.random() * 7) * stage.speedMultiplier,
     gravity: 0.27,
     radius,
     sliced: false,

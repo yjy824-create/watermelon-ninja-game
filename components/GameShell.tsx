@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import GameCanvas from './GameCanvas';
+import ShareCard from './ShareCard';
+import SoundToggle from './SoundToggle';
+import { getPlayerRank } from '@/lib/rank';
+import { getSoundEnabled, initializeSound, playSound, setSoundEnabled } from '@/lib/sound';
 import { getBestScore } from '@/lib/storage';
 
 type Screen = 'home' | 'playing' | 'result';
@@ -11,19 +15,53 @@ export default function GameShell() {
   const [lastScore, setLastScore] = useState(0);
   const [bestScore, setBestScoreState] = useState(0);
   const [isNewRecord, setIsNewRecord] = useState(false);
+  const [soundEnabled, setSoundEnabledState] = useState(true);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setBestScoreState(getBestScore());
+      setSoundEnabledState(getSoundEnabled());
     }, 0);
 
     return () => window.clearTimeout(timer);
   }, []);
 
+  async function handleSoundToggle() {
+    const nextEnabled = !soundEnabled;
+    setSoundEnabledState(nextEnabled);
+    setSoundEnabled(nextEnabled);
+
+    if (nextEnabled) {
+      await initializeSound();
+      playSound('click', true);
+    }
+  }
+
+  async function handleStartGame() {
+    await initializeSound();
+    playSound('click', soundEnabled);
+    setIsNewRecord(false);
+    setLastScore(0);
+    setScreen('playing');
+  }
+
+  async function handleReplay() {
+    await initializeSound();
+    playSound('click', soundEnabled);
+    setScreen('playing');
+  }
+
+  function handleGoHome() {
+    playSound('click', soundEnabled);
+    setScreen('home');
+  }
+
   if (screen === 'playing') {
     return (
       <GameCanvas
         bestScore={bestScore}
+        soundEnabled={soundEnabled}
+        onSoundToggle={handleSoundToggle}
         onFinish={(score, best) => {
           setLastScore(score);
           setIsNewRecord(score > bestScore);
@@ -35,6 +73,8 @@ export default function GameShell() {
   }
 
   if (screen === 'result') {
+    const rank = getPlayerRank(lastScore);
+
     return (
       <main className="relative min-h-screen overflow-hidden bg-[#f6ffe7] px-5 py-8 text-center text-emerald-950">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(250,204,21,0.38),transparent_24%),radial-gradient(circle_at_85%_18%,rgba(45,212,191,0.28),transparent_20%),linear-gradient(180deg,#dcfce7_0%,#fef9c3_58%,#fbbf24_100%)]" />
@@ -57,15 +97,24 @@ export default function GameShell() {
               </div>
             </div>
 
+            <div className="mt-4 rounded-[8px] bg-white/80 px-4 py-3 shadow-inner">
+              <p data-testid="player-rank" data-rank-title={rank.title} className="text-2xl font-black text-orange-500">
+                {rank.title}
+              </p>
+              <p className="mt-1 text-sm font-bold text-emerald-700">{rank.encouragement}</p>
+            </div>
+
+            <ShareCard score={lastScore} bestScore={bestScore} rank={rank} soundEnabled={soundEnabled} />
+
             <div className="mt-7 grid gap-3">
               <button
                 data-testid="replay-button"
                 className="game-button bg-emerald-500 text-xl text-white shadow-lg shadow-emerald-700/20"
-                onClick={() => setScreen('playing')}
+                onClick={handleReplay}
               >
                 再玩一次
               </button>
-              <button data-testid="home-button" className="game-button bg-lime-100 text-lg text-emerald-800" onClick={() => setScreen('home')}>
+              <button data-testid="home-button" className="game-button bg-lime-100 text-lg text-emerald-800" onClick={handleGoHome}>
                 返回首页
               </button>
             </div>
@@ -99,14 +148,14 @@ export default function GameShell() {
             最高分：<span data-testid="home-best-score">{bestScore}</span>
           </div>
 
+          <div className="mt-4">
+            <SoundToggle enabled={soundEnabled} onToggle={handleSoundToggle} />
+          </div>
+
           <button
             data-testid="start-button"
             className="game-button mt-6 w-full bg-emerald-500 text-2xl text-white shadow-lg shadow-emerald-700/20"
-            onClick={() => {
-              setIsNewRecord(false);
-              setLastScore(0);
-              setScreen('playing');
-            }}
+            onClick={handleStartGame}
           >
             开始游戏
           </button>
