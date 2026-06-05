@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  overscroll-behavior: none;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background: linear-gradient(180deg, #ecfdf5 0%, #fef9c3 100%);
+  color: #14532d;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
+.game-button {
+  min-height: 56px;
+  border-radius: 8px;
+  padding: 14px 24px;
+  font-weight: 900;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    filter 120ms ease;
+}
+
+.game-button:active {
+  transform: translateY(2px) scale(0.985);
+  filter: saturate(1.08);
+}
+
+.score-pop {
+  animation: score-pop 260ms ease;
+}
+
+@keyframes score-pop {
+  0% {
+    transform: scale(0.88);
+  }
+  55% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes score-float {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -30%) scale(0.82);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -160%) scale(1.05);
+  }
+}
+
+@keyframes combo-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.68) rotate(-4deg);
+  }
+  28% {
+    opacity: 1;
+    transform: translate(-50%, -70%) scale(1.15) rotate(2deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -160%) scale(0.98) rotate(0deg);
+  }
+}
+
+@keyframes slice-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.62) rotate(-8deg);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.24) rotate(12deg);
+  }
+}
+
+@keyframes splash-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  20% {
+    opacity: 0.84;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes result-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-score-float {
+  animation: score-float 780ms ease-out forwards;
+}
+
+.animate-combo-pop {
+  animation: combo-pop 820ms ease-out forwards;
+}
+
+.animate-slice-pop {
+  animation: slice-pop 760ms ease-out forwards;
+}
+
+.animate-splash-pop {
+  animation: splash-pop 680ms ease-out forwards;
+}
+
+.animate-result-in {
+  animation: result-in 360ms ease-out both;
+}
