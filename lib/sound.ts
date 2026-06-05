@@ -10,6 +10,16 @@ const SOUND_FILES: Record<SoundName, string> = {
   click: '/audio/click.wav'
 };
 
+const SOUND_VOLUME: Record<SoundName, number> = {
+  slice: 0.35,
+  bomb: 0.45,
+  combo: 0.45,
+  'game-over': 0.4,
+  click: 0.25
+};
+
+const AUDIO_INIT_TIMEOUT_MS = 900;
+
 let audioContext: AudioContext | null = null;
 const buffers = new Map<SoundName, AudioBuffer>();
 let preloadPromise: Promise<void> | null = null;
@@ -36,6 +46,18 @@ async function loadBuffer(name: SoundName, context: AudioContext): Promise<void>
   buffers.set(name, buffer);
 }
 
+async function settleAudioTask(task: Promise<unknown>): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, AUDIO_INIT_TIMEOUT_MS);
+    task
+      .catch(() => undefined)
+      .finally(() => {
+        window.clearTimeout(timeout);
+        resolve();
+      });
+  });
+}
+
 export function getSoundEnabled(): boolean {
   if (typeof window === 'undefined') return true;
   return window.localStorage.getItem(SOUND_ENABLED_KEY) !== 'false';
@@ -51,16 +73,14 @@ export async function initializeSound(): Promise<void> {
   if (!context) return;
 
   if (context.state === 'suspended') {
-    await context.resume();
+    await settleAudioTask(context.resume());
   }
 
   if (!preloadPromise) {
-    preloadPromise = Promise.all(Object.keys(SOUND_FILES).map((name) => loadBuffer(name as SoundName, context))).then(
-      () => undefined
-    );
+    preloadPromise = Promise.allSettled(Object.keys(SOUND_FILES).map((name) => loadBuffer(name as SoundName, context))).then(() => undefined);
   }
 
-  await preloadPromise;
+  await settleAudioTask(preloadPromise);
 }
 
 export function playSound(name: SoundName, enabled = true): void {
@@ -73,7 +93,7 @@ export function playSound(name: SoundName, enabled = true): void {
   try {
     const source = context.createBufferSource();
     const gain = context.createGain();
-    gain.gain.value = name === 'bomb' ? 0.62 : 0.78;
+    gain.gain.value = SOUND_VOLUME[name];
     source.buffer = buffer;
     source.connect(gain);
     gain.connect(context.destination);
