@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import SoundToggle from './SoundToggle';
-import { DifficultyStage, FlyingItem, GAME_DURATION_SECONDS, SlashPoint, SliceEffect, getDifficultyStage } from '@/lib/gameConfig';
+import {
+  DifficultyStage,
+  FINAL_COUNTDOWN_CONFIG,
+  FlyingItem,
+  GAME_DURATION_SECONDS,
+  RUSH_MODE_CONFIG,
+  SlashPoint,
+  SliceEffect,
+  getDifficultyStage
+} from '@/lib/gameConfig';
 import { createFlyingItem, distancePointToSegment, getGestureFruitScore, isOutOfBounds, randomBatchSize } from '@/lib/gamePhysics';
 import { playSound } from '@/lib/sound';
 import { setBestScore } from '@/lib/storage';
@@ -17,6 +26,12 @@ interface Props {
 const TRAIL_LIFETIME_MS = 170;
 const EFFECT_LIFETIME_MS = 820;
 const GESTURE_COMMIT_DELAY_MS = 210;
+
+type RushMessage = {
+  id: string;
+  text: string;
+  kind: 'rush' | 'prompt';
+};
 
 function getPointFromEvent(event: React.PointerEvent<HTMLDivElement>, stage: HTMLDivElement): SlashPoint {
   const rect = stage.getBoundingClientRect();
@@ -70,6 +85,11 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const nextSpawnAtRef = useRef(0);
   const gestureFruitHitsRef = useRef(0);
   const gesturePointRef = useRef<SlashPoint | null>(null);
+  const rushModeRef = useRef(false);
+  const rushBannerShownRef = useRef(false);
+  const promptedSecondsRef = useRef<Set<number>>(new Set());
+  const rushMessageTimerRef = useRef<number | null>(null);
+  const shakeTimerRef = useRef<number | null>(null);
 
   const [items, setItems] = useState<FlyingItem[]>([]);
   const [slash, setSlash] = useState<SlashPoint[]>([]);
@@ -77,12 +97,51 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
   const [difficultyStage, setDifficultyStage] = useState<DifficultyStage>(() => getDifficultyStage(GAME_DURATION_SECONDS));
+  const [rushMessage, setRushMessage] = useState<RushMessage | null>(null);
+  const [isShaking, setIsShaking] = useState(false);
 
   const clearGestureTimer = useCallback(() => {
     if (gestureTimerRef.current !== null) {
       window.clearTimeout(gestureTimerRef.current);
       gestureTimerRef.current = null;
     }
+  }, []);
+
+  const clearRushMessageTimer = useCallback(() => {
+    if (rushMessageTimerRef.current !== null) {
+      window.clearTimeout(rushMessageTimerRef.current);
+      rushMessageTimerRef.current = null;
+    }
+  }, []);
+
+  const showRushMessage = useCallback(
+    (text: string, kind: RushMessage['kind']) => {
+      clearRushMessageTimer();
+      setRushMessage({
+        id: `${performance.now()}-${text}`,
+        text,
+        kind
+      });
+      rushMessageTimerRef.current = window.setTimeout(() => {
+        setRushMessage(null);
+        rushMessageTimerRef.current = null;
+      }, kind === 'rush' ? RUSH_MODE_CONFIG.bannerDurationMs : RUSH_MODE_CONFIG.promptDurationMs);
+    },
+    [clearRushMessageTimer]
+  );
+
+  const triggerShake = useCallback(() => {
+    if (!rushModeRef.current) return;
+
+    if (shakeTimerRef.current !== null) {
+      window.clearTimeout(shakeTimerRef.current);
+    }
+
+    setIsShaking(true);
+    shakeTimerRef.current = window.setTimeout(() => {
+      setIsShaking(false);
+      shakeTimerRef.current = null;
+    }, RUSH_MODE_CONFIG.shakeDurationMs);
   }, []);
 
   const updateScore = useCallback((next: number) => {
@@ -106,6 +165,9 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     const points = getGestureFruitScore(fruitHits);
     updateScore(scoreRef.current + points);
     playSound(fruitHits >= 2 ? 'combo' : 'slice', soundEnabled);
+    if (fruitHits >= 2) {
+      triggerShake();
+    }
     pushEffects([
       createEffect({
         kind: fruitHits >= 2 ? 'combo' : 'score',
@@ -118,7 +180,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
 
     gestureFruitHitsRef.current = 0;
     gesturePointRef.current = null;
-  }, [clearGestureTimer, pushEffects, soundEnabled, updateScore]);
+  }, [clearGestureTimer, pushEffects, soundEnabled, triggerShake, updateScore]);
 
   const scheduleGestureCommit = useCallback(() => {
     clearGestureTimer();
@@ -147,6 +209,9 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   useEffect(() => {
     const startAt = performance.now();
     runningRef.current = true;
+    rushModeRef.current = false;
+    rushBannerShownRef.current = false;
+    promptedSecondsRef.current = new Set();
     itemsRef.current = [];
     slashRef.current = [];
     effectsRef.current = [];
@@ -166,7 +231,10 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
       }
 
       itemsRef.current = [...itemsRef.current, ...nextItems];
-      nextSpawnAtRef.current = now + stage.spawnIntervalMs + Math.random() * 90;
+      const isRushMode = rushModeRef.current;
+      const interval = isRushMode ? stage.spawnIntervalMs * RUSH_MODE_CONFIG.spawnIntervalMultiplier : stage.spawnIntervalMs;
+      const jitter = isRushMode ? RUSH_MODE_CONFIG.spawnJitterMs : 90;
+      nextSpawnAtRef.current = now + interval + Math.random() * jitter;
     };
 
     const loop = (now: number) => {
@@ -178,7 +246,20 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
 
       const remainingSeconds = Math.max(0, Math.ceil((endAtRef.current - now) / 1000));
       const stage = getDifficultyStage(remainingSeconds);
+      const isRushMode = remainingSeconds <= RUSH_MODE_CONFIG.startsAtSeconds;
+      rushModeRef.current = isRushMode;
       setDifficultyStage((current) => (current.id === stage.id ? current : stage));
+
+      if (isRushMode && !rushBannerShownRef.current) {
+        rushBannerShownRef.current = true;
+        showRushMessage('最后冲刺！', 'rush');
+      }
+
+      const finalPrompt = FINAL_COUNTDOWN_CONFIG.prompts.find((prompt) => prompt.timeLeft === remainingSeconds);
+      if (finalPrompt && !promptedSecondsRef.current.has(remainingSeconds)) {
+        promptedSecondsRef.current.add(remainingSeconds);
+        showRushMessage(finalPrompt.text, 'prompt');
+      }
 
       if (now >= nextSpawnAtRef.current) {
         spawnItem(now, stage);
@@ -223,8 +304,12 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
       }
+      clearRushMessageTimer();
+      if (shakeTimerRef.current !== null) {
+        window.clearTimeout(shakeTimerRef.current);
+      }
     };
-  }, [clearGestureTimer, finish]);
+  }, [clearGestureTimer, clearRushMessageTimer, finish, showRushMessage]);
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (!runningRef.current || !stageRef.current) return;
@@ -291,6 +376,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     if (bombHits > 0) {
       updateScore(scoreRef.current - bombHits * 5);
       playSound('bomb', soundEnabled);
+      triggerShake();
     }
 
     if (newEffects.length > 0) {
@@ -319,16 +405,24 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     from: slash[index],
     to: point
   }));
+  const isRushMode = timeLeft <= RUSH_MODE_CONFIG.startsAtSeconds;
+  const isFinalCountdown = timeLeft <= FINAL_COUNTDOWN_CONFIG.pulseStartsAtSeconds;
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f6ffe7] text-emerald-950">
+    <main className={`relative min-h-screen overflow-hidden bg-[#f6ffe7] text-emerald-950 ${isShaking ? 'animate-rush-shake' : ''}`}>
       <div
         className={`absolute inset-0 ${
-          difficultyStage.id === 'sprint'
+          isRushMode
             ? 'bg-[radial-gradient(circle_at_12%_12%,rgba(248,113,113,0.32),transparent_24%),radial-gradient(circle_at_82%_18%,rgba(250,204,21,0.38),transparent_22%),linear-gradient(180deg,#dcfce7_0%,#fef3c7_52%,#fb923c_100%)]'
             : 'bg-[radial-gradient(circle_at_12%_12%,rgba(250,204,21,0.35),transparent_24%),radial-gradient(circle_at_82%_18%,rgba(45,212,191,0.32),transparent_22%),linear-gradient(180deg,#dcfce7_0%,#fef9c3_58%,#fcd34d_100%)]'
         }`}
       />
+      {isRushMode && (
+        <>
+          <div className="rush-speed-lines absolute inset-0" />
+          <div className={`rush-warm-glow absolute inset-0 ${isFinalCountdown ? 'rush-warm-glow-final' : ''}`} />
+        </>
+      )}
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-emerald-400/35 to-transparent" />
 
       <header className="absolute left-0 right-0 top-0 z-20 px-3 pt-3 sm:px-5">
@@ -342,8 +436,11 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
           <div className="rounded-[6px] bg-yellow-50 px-2 py-2">
             <p className="text-xs font-bold text-yellow-700">倒计时</p>
             <p
+              key={timeLeft}
               data-testid="timer-value"
-              className={`text-xl font-black sm:text-2xl ${difficultyStage.id === 'sprint' ? 'text-red-600' : 'text-orange-600'}`}
+              className={`font-black ${
+                isRushMode ? 'text-2xl text-red-600 sm:text-3xl' : 'text-xl text-orange-600 sm:text-2xl'
+              } ${isFinalCountdown ? 'animate-final-countdown-pulse' : ''}`}
             >
               {timeLeft}s
             </p>
@@ -360,10 +457,10 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
             data-testid="difficulty-stage"
             data-stage-id={difficultyStage.id}
             className={`rounded-[8px] border border-white/70 px-4 py-2 text-sm font-black shadow-soft backdrop-blur ${
-              difficultyStage.id === 'sprint' ? 'animate-sprint-pulse bg-red-500 text-white' : 'bg-white/82 text-emerald-800'
+              isRushMode ? 'animate-sprint-pulse bg-red-500 text-white' : 'bg-white/82 text-emerald-800'
             }`}
           >
-            {difficultyStage.id === 'sprint' ? '最后冲刺！' : difficultyStage.label}
+            {isRushMode ? '最后冲刺！' : difficultyStage.label}
           </div>
           <SoundToggle enabled={soundEnabled} compact onToggle={onSoundToggle} />
         </div>
@@ -379,6 +476,20 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
         onPointerCancel={endPointer}
         onContextMenu={(event) => event.preventDefault()}
       >
+        {rushMessage && (
+          <div
+            key={rushMessage.id}
+            data-testid="rush-message"
+            className={`pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 text-center font-black text-white drop-shadow-[0_8px_18px_rgba(127,29,29,0.34)] ${
+              rushMessage.kind === 'rush'
+                ? 'animate-rush-banner top-[26%] text-5xl sm:text-6xl'
+                : 'animate-final-hint top-[18%] rounded-[8px] bg-red-500/88 px-5 py-2 text-3xl shadow-soft backdrop-blur sm:text-4xl'
+            }`}
+          >
+            {rushMessage.text}
+          </div>
+        )}
+
         {items.map((item) => (
           <img
             key={item.id}
@@ -424,7 +535,11 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
             <div
               key={effect.id}
               className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 font-black drop-shadow-lg ${
-                effect.kind === 'combo' ? 'animate-combo-pop text-3xl sm:text-4xl' : 'animate-score-float text-2xl'
+                effect.kind === 'combo'
+                  ? isRushMode
+                    ? 'animate-rush-combo-pop text-4xl sm:text-5xl'
+                    : 'animate-combo-pop text-3xl sm:text-4xl'
+                  : 'animate-score-float text-2xl'
               }`}
               style={{
                 left: effect.x,

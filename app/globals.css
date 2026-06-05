@@ -99,6 +99,28 @@ img {
   }
 }
 
+@keyframes rush-combo-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6) rotate(-5deg);
+    filter: drop-shadow(0 0 0 rgba(250, 204, 21, 0));
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -68%) scale(1.28) rotate(3deg);
+    filter: drop-shadow(0 0 20px rgba(250, 204, 21, 0.86));
+  }
+  44% {
+    opacity: 1;
+    transform: translate(-50%, -84%) scale(1.05) rotate(-1deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -168%) scale(1.12) rotate(0deg);
+    filter: drop-shadow(0 0 12px rgba(251, 146, 60, 0.38));
+  }
+}
+
 @keyframes slice-pop {
   0% {
     opacity: 0;
@@ -124,6 +146,99 @@ img {
   100% {
     opacity: 0;
     transform: scale(1.35);
+  }
+}
+
+@keyframes rush-lines {
+  0% {
+    background-position:
+      0 0,
+      0 0;
+    opacity: 0.28;
+  }
+  100% {
+    background-position:
+      0 110px,
+      0 64px;
+    opacity: 0.4;
+  }
+}
+
+@keyframes rush-glow {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+
+@keyframes final-countdown-pulse {
+  0% {
+    transform: scale(1);
+    text-shadow: 0 0 0 rgba(248, 113, 113, 0);
+  }
+  40% {
+    transform: scale(1.16);
+    text-shadow: 0 0 18px rgba(248, 113, 113, 0.72);
+  }
+  100% {
+    transform: scale(1);
+    text-shadow: 0 0 0 rgba(248, 113, 113, 0);
+  }
+}
+
+@keyframes rush-banner {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.82);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.08);
+  }
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -2px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -18px) scale(0.94);
+  }
+}
+
+@keyframes final-hint {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.86);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.05);
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -12px) scale(0.96);
+  }
+}
+
+@keyframes rush-shake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(2px, -1px, 0);
+  }
+  50% {
+    transform: translate3d(-2px, 1px, 0);
+  }
+  75% {
+    transform: translate3d(1px, 1px, 0);
   }
 }
 
@@ -158,6 +273,10 @@ img {
   animation: combo-pop 820ms ease-out forwards;
 }
 
+.animate-rush-combo-pop {
+  animation: rush-combo-pop 860ms ease-out forwards;
+}
+
 .animate-slice-pop {
   animation: slice-pop 760ms ease-out forwards;
 }
@@ -172,4 +291,47 @@ img {
 
 .animate-sprint-pulse {
   animation: sprint-pulse 900ms ease-in-out infinite;
+}
+
+.animate-final-countdown-pulse {
+  animation: final-countdown-pulse 520ms ease-out both;
+}
+
+.animate-rush-banner {
+  animation: rush-banner 1500ms ease-out both;
+}
+
+.animate-final-hint {
+  animation: final-hint 1250ms ease-out both;
+}
+
+.animate-rush-shake {
+  animation: rush-shake 180ms ease-out both;
+}
+
+.rush-speed-lines {
+  background-image:
+    linear-gradient(115deg, transparent 0 44%, rgba(255, 255, 255, 0.28) 45% 47%, transparent 48% 100%),
+    linear-gradient(115deg, transparent 0 70%, rgba(254, 240, 138, 0.3) 71% 72%, transparent 73% 100%);
+  background-size:
+    76px 110px,
+    118px 150px;
+  mix-blend-mode: screen;
+  opacity: 0.34;
+  pointer-events: none;
+  animation: rush-lines 900ms linear infinite;
+}
+
+.rush-warm-glow {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(251, 146, 60, 0.16), transparent 34%),
+    radial-gradient(circle at 50% 96%, rgba(248, 113, 113, 0.22), transparent 32%);
+  pointer-events: none;
+  animation: rush-glow 1400ms ease-in-out infinite;
+}
+
+.rush-warm-glow-final {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(251, 146, 60, 0.22), transparent 34%),
+    radial-gradient(circle at 50% 96%, rgba(239, 68, 68, 0.28), transparent 34%);
 }

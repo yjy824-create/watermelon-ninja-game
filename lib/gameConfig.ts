@@ -2,6 +2,24 @@ export const GAME_DURATION_SECONDS = 60;
 export const BEST_SCORE_KEY = 'watermelon-ninja-best-score';
 export const SOUND_ENABLED_KEY = 'watermelon-ninja-sound-enabled';
 
+export const RUSH_MODE_CONFIG = {
+  startsAtSeconds: 20,
+  bannerDurationMs: 1500,
+  promptDurationMs: 1250,
+  shakeDurationMs: 180,
+  spawnIntervalMultiplier: 0.94,
+  spawnJitterMs: 55
+} as const;
+
+export const FINAL_COUNTDOWN_CONFIG = {
+  pulseStartsAtSeconds: 10,
+  prompts: [
+    { timeLeft: 10, text: '10 秒！' },
+    { timeLeft: 5, text: '5 秒！' },
+    { timeLeft: 1, text: '最后一刀！' }
+  ]
+} as const;
+
 export const DIFFICULTY_STAGES = [
   {
     id: 'warmup',
