@@ -20,6 +20,34 @@ export const FINAL_COUNTDOWN_CONFIG = {
   ]
 } as const;
 
+export const FINAL_BOSS_CONFIG = {
+  startsAtSeconds: 10,
+  scorePerHit: 2,
+  maxHits: 30,
+  asset: '/assets/watermelon.png',
+  slicedAsset: '/assets/watermelon-sliced.png',
+  radius: {
+    desktop: 86,
+    mobile: 68
+  },
+  rewards: [
+    { hits: 5, bonus: 5, text: '大西瓜连斩 +5' },
+    { hits: 10, bonus: 10, text: '大西瓜猛攻 +10' },
+    { hits: 20, bonus: 20, text: '大西瓜狂切 +20' },
+    { hits: 30, bonus: 30, text: '完美切爆 +30' }
+  ],
+  movement: {
+    enabled: true,
+    desktopSpeed: 100,
+    mobileSpeed: 60,
+    directionChangeMinMs: 1000,
+    directionChangeMaxMs: 2000,
+    edgePadding: 12,
+    topSafePadding: 80,
+    bottomSafePadding: 24
+  }
+} as const;
+
 export const FRUIT_SCORE_MAP = {
   watermelon: 1,
   apple: 2,
@@ -139,6 +167,20 @@ export interface FlyingItem {
   sliced: boolean;
   rotation: number;
   rotationSpeed: number;
+}
+
+export interface FinalBossFruit {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  hits: number;
+  maxHits: number;
+  nextDirectionChangeAt: number;
+  defeated: boolean;
+  hitFlashId: number;
 }
 
 export interface SlashPoint {

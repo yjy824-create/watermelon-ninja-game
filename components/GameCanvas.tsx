@@ -5,6 +5,8 @@ import SoundToggle from './SoundToggle';
 import {
   DifficultyStage,
   FINAL_COUNTDOWN_CONFIG,
+  FINAL_BOSS_CONFIG,
+  FinalBossFruit,
   FlyingItem,
   GAME_DURATION_SECONDS,
   RUSH_MODE_CONFIG,
@@ -12,7 +14,16 @@ import {
   SliceEffect,
   getDifficultyStage
 } from '@/lib/gameConfig';
-import { createFlyingItem, distancePointToSegment, getComboBonus, getGestureFruitScore, isOutOfBounds, randomBatchSize } from '@/lib/gamePhysics';
+import {
+  createFinalBoss,
+  createFlyingItem,
+  distancePointToSegment,
+  getComboBonus,
+  getGestureFruitScore,
+  isOutOfBounds,
+  randomBatchSize,
+  updateFinalBoss
+} from '@/lib/gamePhysics';
 import { playSound } from '@/lib/sound';
 import { setBestScore } from '@/lib/storage';
 
@@ -73,6 +84,8 @@ function TrailSegment({ from, to }: { from: SlashPoint; to: SlashPoint }) {
 export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onFinish }: Props) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const itemsRef = useRef<FlyingItem[]>([]);
+  const bossRef = useRef<FinalBossFruit | null>(null);
+  const bossSpawnedRef = useRef(false);
   const slashRef = useRef<SlashPoint[]>([]);
   const effectsRef = useRef<SliceEffect[]>([]);
   const scoreRef = useRef(0);
@@ -86,6 +99,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const gestureFruitHitsRef = useRef(0);
   const gestureBaseScoreRef = useRef(0);
   const gestureBombPenaltyRef = useRef(0);
+  const bossGestureHitRef = useRef(false);
   const gesturePointRef = useRef<SlashPoint | null>(null);
   const rushModeRef = useRef(false);
   const rushBannerShownRef = useRef(false);
@@ -94,6 +108,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const shakeTimerRef = useRef<number | null>(null);
 
   const [items, setItems] = useState<FlyingItem[]>([]);
+  const [boss, setBoss] = useState<FinalBossFruit | null>(null);
   const [slash, setSlash] = useState<SlashPoint[]>([]);
   const [effects, setEffects] = useState<SliceEffect[]>([]);
   const [score, setScore] = useState(0);
@@ -156,6 +171,65 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     effectsRef.current = [...effectsRef.current, ...newEffects];
     setEffects([...effectsRef.current]);
   }, []);
+
+  const hitFinalBoss = useCallback(
+    (point: SlashPoint) => {
+      const currentBoss = bossRef.current;
+      if (!currentBoss || currentBoss.defeated || bossGestureHitRef.current) return;
+
+      const nextHits = currentBoss.hits + 1;
+      const reward = FINAL_BOSS_CONFIG.rewards.find((milestone) => milestone.hits === nextHits);
+      const totalPoints = FINAL_BOSS_CONFIG.scorePerHit + (reward?.bonus ?? 0);
+      const defeated = nextHits >= FINAL_BOSS_CONFIG.maxHits;
+
+      updateScore(scoreRef.current + totalPoints);
+      playSound(reward ? 'combo' : 'slice', soundEnabled);
+      triggerShake();
+
+      const nextBoss = {
+        ...currentBoss,
+        hits: nextHits,
+        defeated,
+        hitFlashId: currentBoss.hitFlashId + 1
+      };
+
+      bossRef.current = defeated ? null : nextBoss;
+      setBoss(defeated ? null : nextBoss);
+      bossGestureHitRef.current = true;
+
+      const bossEffects: SliceEffect[] = [
+        createEffect({
+          kind: 'score',
+          x: point.x,
+          y: point.y - 28,
+          text: `+${FINAL_BOSS_CONFIG.scorePerHit}`,
+          color: '#ef4444'
+        })
+      ];
+
+      if (reward) {
+        bossEffects.push(
+          createEffect({
+            kind: 'combo',
+            x: currentBoss.x,
+            y: currentBoss.y - currentBoss.radius * 0.76,
+            text: reward.text,
+            color: defeated ? '#dc2626' : '#f97316'
+          })
+        );
+      }
+
+      if (defeated) {
+        bossEffects.push(
+          createEffect({ kind: 'splash', x: currentBoss.x, y: currentBoss.y, asset: '/assets/juice-splash.png', color: '#ef4444' }),
+          createEffect({ kind: 'sliced', x: currentBoss.x, y: currentBoss.y, asset: FINAL_BOSS_CONFIG.slicedAsset })
+        );
+      }
+
+      pushEffects(bossEffects);
+    },
+    [pushEffects, soundEnabled, triggerShake, updateScore]
+  );
 
   const commitGestureScore = useCallback(() => {
     clearGestureTimer();
@@ -223,6 +297,8 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     rushBannerShownRef.current = false;
     promptedSecondsRef.current = new Set();
     itemsRef.current = [];
+    bossRef.current = null;
+    bossSpawnedRef.current = false;
     slashRef.current = [];
     effectsRef.current = [];
     endAtRef.current = startAt + GAME_DURATION_SECONDS * 1000;
@@ -279,6 +355,15 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
       const width = rect?.width ?? window.innerWidth;
       const height = rect?.height ?? window.innerHeight;
 
+      if (remainingSeconds <= FINAL_BOSS_CONFIG.startsAtSeconds && !bossSpawnedRef.current) {
+        bossRef.current = createFinalBoss(width, height, now);
+        bossSpawnedRef.current = true;
+      }
+
+      if (bossRef.current && FINAL_BOSS_CONFIG.movement.enabled) {
+        bossRef.current = updateFinalBoss(bossRef.current, width, height, delta, now);
+      }
+
       itemsRef.current = itemsRef.current
         .map((item) => ({
           ...item,
@@ -293,6 +378,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
       effectsRef.current = effectsRef.current.filter((effect) => now - effect.createdAt < EFFECT_LIFETIME_MS);
 
       setItems([...itemsRef.current]);
+      setBoss(bossRef.current ? { ...bossRef.current } : null);
       setSlash([...slashRef.current]);
       setEffects([...effectsRef.current]);
 
@@ -330,6 +416,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     gestureFruitHitsRef.current = 0;
     gestureBaseScoreRef.current = 0;
     gestureBombPenaltyRef.current = 0;
+    bossGestureHitRef.current = false;
     gesturePointRef.current = null;
 
     const point = getPointFromEvent(event, stageRef.current);
@@ -357,6 +444,14 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     let fruitHits = 0;
     let bombPenalty = 0;
     let fruitBaseScore = 0;
+    const currentBoss = bossRef.current;
+
+    if (currentBoss && !currentBoss.defeated && !bossGestureHitRef.current) {
+      const bossHitDistance = distancePointToSegment(currentBoss.x, currentBoss.y, previous.x, previous.y, point.x, point.y);
+      if (bossHitDistance <= currentBoss.radius) {
+        hitFinalBoss(point);
+      }
+    }
 
     itemsRef.current = itemsRef.current.map((item) => {
       if (item.sliced) return item;
@@ -408,6 +503,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     if (!pointerDownRef.current) return;
 
     pointerDownRef.current = false;
+    bossGestureHitRef.current = false;
     slashRef.current = [];
     setSlash([]);
     commitGestureScore();
@@ -427,6 +523,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   }));
   const isRushMode = timeLeft <= RUSH_MODE_CONFIG.startsAtSeconds;
   const isFinalCountdown = timeLeft <= FINAL_COUNTDOWN_CONFIG.pulseStartsAtSeconds;
+  const bossProgress = boss ? (boss.hits / boss.maxHits) * 100 : 0;
 
   return (
     <main className={`relative min-h-screen overflow-hidden bg-[#f6ffe7] text-emerald-950 ${isShaking ? 'animate-rush-shake' : ''}`}>
@@ -528,6 +625,46 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
             }}
           />
         ))}
+
+        {boss && (
+          <>
+            <div
+              data-testid="final-boss-fruit"
+              data-boss-hits={boss.hits}
+              data-boss-max-hits={boss.maxHits}
+              data-boss-x={Math.round(boss.x)}
+              data-boss-y={Math.round(boss.y)}
+              data-boss-vx={Math.round(boss.vx)}
+              data-boss-vy={Math.round(boss.vy)}
+              className="pointer-events-none absolute z-10"
+              style={{
+                left: boss.x - boss.radius,
+                top: boss.y - boss.radius,
+                width: boss.radius * 2,
+                height: boss.radius * 2
+              }}
+            >
+              <img
+                key={boss.hitFlashId}
+                src={FINAL_BOSS_CONFIG.asset}
+                alt="Boss 大西瓜"
+                draggable={false}
+                className="final-boss-image h-full w-full object-contain drop-shadow-[0_18px_22px_rgba(127,29,29,0.28)]"
+              />
+            </div>
+            <div className="pointer-events-none absolute bottom-20 left-1/2 z-20 w-[min(88vw,420px)] -translate-x-1/2 rounded-[8px] border border-white/70 bg-white/78 px-3 py-2 shadow-soft backdrop-blur">
+              <div className="flex items-center justify-between text-xs font-black text-red-700">
+                <span>Boss 大西瓜</span>
+                <span>
+                  {boss.hits}/{boss.maxHits}
+                </span>
+              </div>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-red-100">
+                <div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-500 transition-[width] duration-150" style={{ width: `${bossProgress}%` }} />
+              </div>
+            </div>
+          </>
+        )}
 
         {effects.map((effect) => {
           if (effect.asset) {

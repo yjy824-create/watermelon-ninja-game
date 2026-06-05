@@ -1,4 +1,18 @@
-import { BOMB_TYPE, COMBO_BONUS, DifficultyStage, FRUIT_SPAWN_WEIGHTS, FRUIT_TYPES, FlyingItem, FlyingItemKind } from './gameConfig';
+import {
+  BOMB_TYPE,
+  COMBO_BONUS,
+  DifficultyStage,
+  FINAL_BOSS_CONFIG,
+  FRUIT_SPAWN_WEIGHTS,
+  FRUIT_TYPES,
+  FinalBossFruit,
+  FlyingItem,
+  FlyingItemKind
+} from './gameConfig';
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 export function distancePointToSegment(
   px: number,
@@ -76,4 +90,82 @@ export function createFlyingItem(width: number, height: number, stage: Difficult
 
 export function isOutOfBounds(item: FlyingItem, width: number, height: number): boolean {
   return item.y > height + item.radius + 110 || item.x < -120 || item.x > width + 120;
+}
+
+function getBossSpeed(width: number): number {
+  return width < 640 ? FINAL_BOSS_CONFIG.movement.mobileSpeed : FINAL_BOSS_CONFIG.movement.desktopSpeed;
+}
+
+export function getBossBounds(width: number, height: number, radius: number) {
+  const { edgePadding, topSafePadding, bottomSafePadding } = FINAL_BOSS_CONFIG.movement;
+  const minX = radius + edgePadding;
+  const maxX = Math.max(minX, width - radius - edgePadding);
+  const minY = radius + topSafePadding;
+  const maxY = Math.max(minY, height - radius - bottomSafePadding);
+
+  return { minX, maxX, minY, maxY };
+}
+
+function getBossDirection(width: number): Pick<FinalBossFruit, 'vx' | 'vy'> {
+  const speed = getBossSpeed(width);
+  const angle = -Math.PI * 0.18 + Math.random() * Math.PI * 0.36;
+  const direction = Math.random() > 0.5 ? 1 : -1;
+
+  return {
+    vx: Math.cos(angle) * speed * direction,
+    vy: Math.sin(angle) * speed * 0.64
+  };
+}
+
+function getNextDirectionChangeAt(now: number): number {
+  const { directionChangeMinMs, directionChangeMaxMs } = FINAL_BOSS_CONFIG.movement;
+  return now + directionChangeMinMs + Math.random() * (directionChangeMaxMs - directionChangeMinMs);
+}
+
+export function createFinalBoss(width: number, height: number, now: number): FinalBossFruit {
+  const radius = width < 640 ? FINAL_BOSS_CONFIG.radius.mobile : FINAL_BOSS_CONFIG.radius.desktop;
+  const bounds = getBossBounds(width, height, radius);
+  const direction = getBossDirection(width);
+
+  return {
+    id: `final-boss-${now}`,
+    x: clamp(width / 2, bounds.minX, bounds.maxX),
+    y: clamp(height * 0.52, bounds.minY, bounds.maxY),
+    vx: direction.vx,
+    vy: direction.vy,
+    radius,
+    hits: 0,
+    maxHits: FINAL_BOSS_CONFIG.maxHits,
+    nextDirectionChangeAt: getNextDirectionChangeAt(now),
+    defeated: false,
+    hitFlashId: 0
+  };
+}
+
+export function updateFinalBoss(boss: FinalBossFruit, width: number, height: number, deltaMs: number, now: number): FinalBossFruit {
+  const direction = now >= boss.nextDirectionChangeAt ? getBossDirection(width) : { vx: boss.vx, vy: boss.vy };
+  const bounds = getBossBounds(width, height, boss.radius);
+  let vx = direction.vx;
+  let vy = direction.vy;
+  let x = boss.x + vx * (deltaMs / 1000);
+  let y = boss.y + vy * (deltaMs / 1000);
+
+  if (x <= bounds.minX || x >= bounds.maxX) {
+    x = clamp(x, bounds.minX, bounds.maxX);
+    vx *= -1;
+  }
+
+  if (y <= bounds.minY || y >= bounds.maxY) {
+    y = clamp(y, bounds.minY, bounds.maxY);
+    vy *= -1;
+  }
+
+  return {
+    ...boss,
+    x,
+    y,
+    vx,
+    vy,
+    nextDirectionChangeAt: now >= boss.nextDirectionChangeAt ? getNextDirectionChangeAt(now) : boss.nextDirectionChangeAt
+  };
 }

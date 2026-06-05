@@ -149,6 +149,31 @@ img {
   }
 }
 
+@keyframes final-boss-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(1deg);
+  }
+}
+
+@keyframes final-boss-hit {
+  0% {
+    scale: 1;
+    filter: saturate(1);
+  }
+  42% {
+    scale: 1.08;
+    filter: saturate(1.18) drop-shadow(0 0 16px rgba(248, 113, 113, 0.55));
+  }
+  100% {
+    scale: 1;
+    filter: saturate(1);
+  }
+}
+
 @keyframes rush-lines {
   0% {
     background-position:
@@ -283,6 +308,12 @@ img {
 
 .animate-splash-pop {
   animation: splash-pop 680ms ease-out forwards;
+}
+
+.final-boss-image {
+  animation:
+    final-boss-float 1800ms ease-in-out infinite,
+    final-boss-hit 260ms ease-out both;
 }
 
 .animate-result-in {
