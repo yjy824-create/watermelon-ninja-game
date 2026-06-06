@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import SoundToggle from './SoundToggle';
 import {
   BOMB_SMOOTHING_CONFIG,
@@ -47,6 +47,42 @@ type RushMessage = {
   kind: 'rush' | 'prompt';
 };
 
+type BossBurstParticle = {
+  id: string;
+  dx: number;
+  dy: number;
+  size: number;
+  color: string;
+  delayMs: number;
+};
+
+type BossFragment = {
+  id: string;
+  dx: number;
+  dy: number;
+  size: number;
+  rotation: number;
+  delayMs: number;
+};
+
+type BossExplosion = {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  createdAt: number;
+  particles: BossBurstParticle[];
+  fragments: BossFragment[];
+};
+
+type MotionStyle = CSSProperties & {
+  '--dx'?: string;
+  '--dy'?: string;
+  '--fragment-rotation'?: string;
+  '--motion-delay'?: string;
+  '--boss-final-shake-distance'?: string;
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -72,6 +108,47 @@ function createBossSlashMark(point: SlashPoint, boss: FinalBossFruit) {
     angle: -45 + Math.random() * 90,
     lengthPercent: 42 + Math.random() * 22,
     opacity: 0.62 + Math.random() * 0.24
+  };
+}
+
+function createBossExplosion(boss: FinalBossFruit): BossExplosion {
+  const particleColors = ['#ef4444', '#fb7185', '#f97316', '#facc15', '#22c55e'];
+  const particleCount = window.innerWidth < 640 ? Math.round(FINAL_BOSS_CONFIG.explosion.particleCount * 0.72) : FINAL_BOSS_CONFIG.explosion.particleCount;
+  const fragments = Array.from({ length: FINAL_BOSS_CONFIG.explosion.fragmentCount }, (_, index) => {
+    const angle = (index / FINAL_BOSS_CONFIG.explosion.fragmentCount) * Math.PI * 2 + Math.random() * 0.38;
+    const distance = boss.radius * (1.1 + Math.random() * 0.92);
+
+    return {
+      id: `${performance.now()}-boss-fragment-${index}-${Math.random().toString(36).slice(2)}`,
+      dx: Math.cos(angle) * distance,
+      dy: Math.sin(angle) * distance,
+      size: boss.radius * (0.34 + Math.random() * 0.24),
+      rotation: -120 + Math.random() * 240,
+      delayMs: Math.random() * 90
+    };
+  });
+  const particles = Array.from({ length: particleCount }, (_, index) => {
+    const angle = (index / particleCount) * Math.PI * 2 + Math.random() * 0.44;
+    const distance = boss.radius * (0.95 + Math.random() * 1.3);
+
+    return {
+      id: `${performance.now()}-boss-particle-${index}-${Math.random().toString(36).slice(2)}`,
+      dx: Math.cos(angle) * distance,
+      dy: Math.sin(angle) * distance,
+      size: 7 + Math.random() * 13,
+      color: particleColors[index % particleColors.length],
+      delayMs: Math.random() * 120
+    };
+  });
+
+  return {
+    id: `${performance.now()}-boss-explosion-${Math.random().toString(36).slice(2)}`,
+    x: boss.x,
+    y: boss.y,
+    radius: boss.radius,
+    createdAt: performance.now(),
+    particles,
+    fragments
   };
 }
 
@@ -109,6 +186,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const bossSpawnedRef = useRef(false);
   const slashRef = useRef<SlashPoint[]>([]);
   const effectsRef = useRef<SliceEffect[]>([]);
+  const bossExplosionRef = useRef<BossExplosion | null>(null);
   const scoreRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const gestureTimerRef = useRef<number | null>(null);
@@ -129,16 +207,19 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const promptedSecondsRef = useRef<Set<number>>(new Set());
   const rushMessageTimerRef = useRef<number | null>(null);
   const shakeTimerRef = useRef<number | null>(null);
+  const bossFinalShakeTimerRef = useRef<number | null>(null);
 
   const [items, setItems] = useState<FlyingItem[]>([]);
   const [boss, setBoss] = useState<FinalBossFruit | null>(null);
   const [slash, setSlash] = useState<SlashPoint[]>([]);
   const [effects, setEffects] = useState<SliceEffect[]>([]);
+  const [bossExplosion, setBossExplosion] = useState<BossExplosion | null>(null);
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
   const [difficultyStage, setDifficultyStage] = useState<DifficultyStage>(() => getDifficultyStage(GAME_DURATION_SECONDS));
   const [rushMessage, setRushMessage] = useState<RushMessage | null>(null);
   const [isShaking, setIsShaking] = useState(false);
+  const [isBossFinalShaking, setIsBossFinalShaking] = useState(false);
 
   const clearGestureTimer = useCallback(() => {
     if (gestureTimerRef.current !== null) {
@@ -184,6 +265,18 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     }, RUSH_MODE_CONFIG.shakeDurationMs);
   }, []);
 
+  const triggerBossFinalShake = useCallback(() => {
+    if (bossFinalShakeTimerRef.current !== null) {
+      window.clearTimeout(bossFinalShakeTimerRef.current);
+    }
+
+    setIsBossFinalShaking(true);
+    bossFinalShakeTimerRef.current = window.setTimeout(() => {
+      setIsBossFinalShaking(false);
+      bossFinalShakeTimerRef.current = null;
+    }, FINAL_BOSS_CONFIG.explosion.shakeDurationMs);
+  }, []);
+
   const updateScore = useCallback((next: number) => {
     const safeScore = Math.max(0, Math.round(next));
     scoreRef.current = safeScore;
@@ -198,23 +291,32 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const hitFinalBoss = useCallback(
     (point: SlashPoint) => {
       const currentBoss = bossRef.current;
-      if (!currentBoss || currentBoss.defeated || bossGestureHitRef.current) return;
+      if (!currentBoss || !currentBoss.active || currentBoss.exploding || currentBoss.completed || currentBoss.defeated || bossGestureHitRef.current) return;
 
       const nextHits = currentBoss.hits + 1;
       const reward = FINAL_BOSS_CONFIG.rewards.find((milestone) => milestone.hits === nextHits);
       const totalPoints = FINAL_BOSS_CONFIG.scorePerHit + (reward?.bonus ?? 0);
       const defeated = nextHits >= FINAL_BOSS_CONFIG.maxHits;
+      const explosionStartedAt = defeated ? performance.now() : undefined;
       const nextSlashMarks = [...currentBoss.slashMarks, createBossSlashMark(point, currentBoss)].slice(-FINAL_BOSS_CONFIG.maxSlashMarks);
 
       updateScore(scoreRef.current + totalPoints);
       playSound(reward ? 'combo' : 'slice', soundEnabled);
-      triggerShake();
+      if (defeated) {
+        triggerBossFinalShake();
+      } else {
+        triggerShake();
+      }
 
       const nextBoss = {
         ...currentBoss,
         hits: nextHits,
+        active: true,
+        exploding: defeated,
+        completed: defeated,
+        explosionStartedAt,
         defeated,
-        defeatedAt: defeated ? performance.now() : currentBoss.defeatedAt,
+        defeatedAt: explosionStartedAt ?? currentBoss.defeatedAt,
         hitFlashId: currentBoss.hitFlashId + 1,
         slashMarks: nextSlashMarks
       };
@@ -246,28 +348,32 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
             kind: 'combo',
             x: currentBoss.x,
             y: currentBoss.y - currentBoss.radius * 0.76,
-            text: defeated ? `完美切爆！+${reward.bonus}` : reward.text,
+            text: defeated ? `${FINAL_BOSS_CONFIG.explosion.text}${FINAL_BOSS_CONFIG.explosion.bonusText}` : reward.text,
             color: defeated ? '#dc2626' : '#f97316'
           })
         );
       }
 
       if (defeated) {
+        const explosion = createBossExplosion(currentBoss);
+        bossExplosionRef.current = explosion;
+        setBossExplosion(explosion);
         bossEffects.push(
           createEffect({ kind: 'splash', x: currentBoss.x, y: currentBoss.y, asset: '/assets/juice-splash.png', color: '#ef4444' }),
+          createEffect({ kind: 'sliced', x: currentBoss.x, y: currentBoss.y, asset: '/assets/explosion.png' }),
           createEffect({ kind: 'sliced', x: currentBoss.x, y: currentBoss.y, asset: FINAL_BOSS_CONFIG.slicedAsset })
         );
       }
 
       pushEffects(bossEffects);
     },
-    [pushEffects, soundEnabled, triggerShake, updateScore]
+    [pushEffects, soundEnabled, triggerBossFinalShake, triggerShake, updateScore]
   );
 
   const tryHitFinalBoss = useCallback(
     (point: SlashPoint, previous?: SlashPoint) => {
       const currentBoss = bossRef.current;
-      if (!currentBoss || currentBoss.defeated || bossGestureHitRef.current) return;
+      if (!currentBoss || !currentBoss.active || currentBoss.exploding || currentBoss.completed || currentBoss.defeated || bossGestureHitRef.current) return;
 
       if (isFinalBossHit(currentBoss, point, previous)) {
         hitFinalBoss(point);
@@ -343,6 +449,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     promptedSecondsRef.current = new Set();
     itemsRef.current = [];
     bossRef.current = null;
+    bossExplosionRef.current = null;
     bossSpawnedRef.current = false;
     slashRef.current = [];
     effectsRef.current = [];
@@ -422,11 +529,25 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
         bossSpawnedRef.current = true;
       }
 
-      if (bossRef.current?.defeated && bossRef.current.defeatedAt && now - bossRef.current.defeatedAt >= FINAL_BOSS_CONFIG.explosionHoldMs) {
+      if (
+        bossRef.current?.exploding &&
+        bossRef.current.explosionStartedAt &&
+        now - bossRef.current.explosionStartedAt >= FINAL_BOSS_CONFIG.explosion.durationMs
+      ) {
+        bossRef.current = {
+          ...bossRef.current,
+          active: false,
+          exploding: false
+        };
         bossRef.current = null;
       }
 
-      if (bossRef.current && !bossRef.current.defeated && FINAL_BOSS_CONFIG.movement.enabled) {
+      if (bossExplosionRef.current && now - bossExplosionRef.current.createdAt >= FINAL_BOSS_CONFIG.explosion.durationMs) {
+        bossExplosionRef.current = null;
+        setBossExplosion(null);
+      }
+
+      if (bossRef.current && bossRef.current.active && !bossRef.current.exploding && !bossRef.current.defeated && FINAL_BOSS_CONFIG.movement.enabled) {
         bossRef.current = updateFinalBoss(bossRef.current, width, height, delta, now);
       }
 
@@ -469,6 +590,9 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
       clearRushMessageTimer();
       if (shakeTimerRef.current !== null) {
         window.clearTimeout(shakeTimerRef.current);
+      }
+      if (bossFinalShakeTimerRef.current !== null) {
+        window.clearTimeout(bossFinalShakeTimerRef.current);
       }
     };
   }, [clearGestureTimer, clearRushMessageTimer, finish, showRushMessage]);
@@ -597,7 +721,12 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const bossStage = boss ? (boss.defeated ? 'defeated' : boss.hits >= 20 ? 'critical' : boss.hits >= 10 ? 'damaged' : boss.hits >= 5 ? 'marked' : 'fresh') : 'fresh';
 
   return (
-    <main className={`relative min-h-screen overflow-hidden bg-[#f6ffe7] text-emerald-950 ${isShaking ? 'animate-rush-shake' : ''}`}>
+    <main
+      className={`relative min-h-screen overflow-hidden bg-[#f6ffe7] text-emerald-950 ${isShaking ? 'animate-rush-shake' : ''} ${
+        isBossFinalShaking ? 'animate-boss-final-shake' : ''
+      }`}
+      style={{ '--boss-final-shake-distance': `${FINAL_BOSS_CONFIG.explosion.shakeIntensity}px` } as MotionStyle}
+    >
       <div
         className={`absolute inset-0 ${
           isRushMode
@@ -765,6 +894,108 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
               </div>
             </div>
           </>
+        )}
+
+        {bossExplosion && (
+          <div
+            key={bossExplosion.id}
+            data-testid="boss-explosion"
+            className="pointer-events-none absolute z-40"
+            style={{
+              left: bossExplosion.x,
+              top: bossExplosion.y
+            }}
+          >
+            <span
+              data-testid="boss-explosion-ring"
+              className="boss-explosion-ring"
+              style={{
+                left: -bossExplosion.radius * 1.45,
+                top: -bossExplosion.radius * 1.45,
+                width: bossExplosion.radius * 2.9,
+                height: bossExplosion.radius * 2.9,
+                animationDuration: `${FINAL_BOSS_CONFIG.explosion.ringDurationMs}ms`
+              }}
+            />
+            <span
+              className="boss-explosion-ring boss-explosion-ring-secondary"
+              style={{
+                left: -bossExplosion.radius * 1.18,
+                top: -bossExplosion.radius * 1.18,
+                width: bossExplosion.radius * 2.36,
+                height: bossExplosion.radius * 2.36,
+                animationDuration: `${FINAL_BOSS_CONFIG.explosion.ringDurationMs}ms`
+              }}
+            />
+            <img
+              src="/assets/explosion.png"
+              alt=""
+              draggable={false}
+              className="boss-explosion-flash"
+              style={{
+                left: -bossExplosion.radius * 1.24,
+                top: -bossExplosion.radius * 1.24,
+                width: bossExplosion.radius * 2.48,
+                height: bossExplosion.radius * 2.48
+              }}
+            />
+            <img
+              src="/assets/juice-splash.png"
+              alt=""
+              draggable={false}
+              className="boss-explosion-splash"
+              style={{
+                left: -bossExplosion.radius * 1.48,
+                top: -bossExplosion.radius * 1.48,
+                width: bossExplosion.radius * 2.96,
+                height: bossExplosion.radius * 2.96
+              }}
+            />
+            <div className="boss-explosion-text">
+              {FINAL_BOSS_CONFIG.explosion.text}
+              <span>{FINAL_BOSS_CONFIG.explosion.bonusText}</span>
+            </div>
+            {bossExplosion.fragments.map((fragment) => (
+              <img
+                key={fragment.id}
+                src={FINAL_BOSS_CONFIG.slicedAsset}
+                alt=""
+                draggable={false}
+                className="boss-fragment"
+                style={
+                  {
+                    left: -fragment.size / 2,
+                    top: -fragment.size / 2,
+                    width: fragment.size,
+                    height: fragment.size,
+                    '--dx': `${fragment.dx}px`,
+                    '--dy': `${fragment.dy}px`,
+                    '--fragment-rotation': `${fragment.rotation}deg`,
+                    '--motion-delay': `${fragment.delayMs}ms`
+                  } as MotionStyle
+                }
+              />
+            ))}
+            {bossExplosion.particles.map((particle) => (
+              <span
+                key={particle.id}
+                className="boss-burst-particle"
+                style={
+                  {
+                    left: -particle.size / 2,
+                    top: -particle.size / 2,
+                    width: particle.size,
+                    height: particle.size,
+                    background: particle.color,
+                    color: particle.color,
+                    '--dx': `${particle.dx}px`,
+                    '--dy': `${particle.dy}px`,
+                    '--motion-delay': `${particle.delayMs}ms`
+                  } as MotionStyle
+                }
+              />
+            ))}
+          </div>
         )}
 
         {effects.map((effect) => {

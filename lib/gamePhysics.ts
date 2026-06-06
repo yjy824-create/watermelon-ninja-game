@@ -134,6 +134,8 @@ export function isOutOfBounds(item: FlyingItem, width: number, height: number): 
 }
 
 export function isFinalBossHit(boss: FinalBossFruit, point: SlashPoint, previous?: SlashPoint): boolean {
+  if (!boss.active || boss.exploding || boss.completed || boss.defeated) return false;
+
   const hitRadius = boss.radius * FINAL_BOSS_CONFIG.hitRadiusMultiplier;
 
   if (previous) {
@@ -188,6 +190,9 @@ export function createFinalBoss(width: number, height: number, now: number): Fin
     hits: 0,
     maxHits: FINAL_BOSS_CONFIG.maxHits,
     nextDirectionChangeAt: getNextDirectionChangeAt(now),
+    active: true,
+    exploding: false,
+    completed: false,
     defeated: false,
     hitFlashId: 0,
     slashMarks: []

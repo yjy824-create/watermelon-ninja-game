@@ -25,8 +25,17 @@ export const FINAL_BOSS_CONFIG = {
   scorePerHit: 2,
   maxHits: 30,
   hitRadiusMultiplier: 1.15,
-  explosionHoldMs: 850,
   maxSlashMarks: 12,
+  explosion: {
+    durationMs: 1000,
+    ringDurationMs: 700,
+    fragmentCount: 8,
+    particleCount: 18,
+    shakeDurationMs: 300,
+    shakeIntensity: 5,
+    text: '完美切爆！',
+    bonusText: '+20'
+  },
   asset: '/assets/watermelon.png',
   slicedAsset: '/assets/watermelon-sliced.png',
   radius: {
@@ -191,6 +200,10 @@ export interface FinalBossFruit {
   hits: number;
   maxHits: number;
   nextDirectionChangeAt: number;
+  active: boolean;
+  exploding: boolean;
+  completed: boolean;
+  explosionStartedAt?: number;
   defeated: boolean;
   defeatedAt?: number;
   hitFlashId: number;
