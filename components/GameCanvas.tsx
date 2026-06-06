@@ -47,6 +47,10 @@ type RushMessage = {
   kind: 'rush' | 'prompt';
 };
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function getPointFromEvent(event: React.PointerEvent<HTMLDivElement>, stage: HTMLDivElement): SlashPoint {
   const rect = stage.getBoundingClientRect();
 
@@ -54,6 +58,20 @@ function getPointFromEvent(event: React.PointerEvent<HTMLDivElement>, stage: HTM
     x: event.clientX - rect.left,
     y: event.clientY - rect.top,
     time: performance.now()
+  };
+}
+
+function createBossSlashMark(point: SlashPoint, boss: FinalBossFruit) {
+  const xPercent = clamp(50 + ((point.x - boss.x) / boss.radius) * 50, 18, 82);
+  const yPercent = clamp(50 + ((point.y - boss.y) / boss.radius) * 50, 18, 82);
+
+  return {
+    id: `${performance.now()}-boss-slash-${Math.random().toString(36).slice(2)}`,
+    xPercent,
+    yPercent,
+    angle: -45 + Math.random() * 90,
+    lengthPercent: 42 + Math.random() * 22,
+    opacity: 0.62 + Math.random() * 0.24
   };
 }
 
@@ -186,6 +204,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
       const reward = FINAL_BOSS_CONFIG.rewards.find((milestone) => milestone.hits === nextHits);
       const totalPoints = FINAL_BOSS_CONFIG.scorePerHit + (reward?.bonus ?? 0);
       const defeated = nextHits >= FINAL_BOSS_CONFIG.maxHits;
+      const nextSlashMarks = [...currentBoss.slashMarks, createBossSlashMark(point, currentBoss)].slice(-FINAL_BOSS_CONFIG.maxSlashMarks);
 
       updateScore(scoreRef.current + totalPoints);
       playSound(reward ? 'combo' : 'slice', soundEnabled);
@@ -195,11 +214,13 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
         ...currentBoss,
         hits: nextHits,
         defeated,
-        hitFlashId: currentBoss.hitFlashId + 1
+        defeatedAt: defeated ? performance.now() : currentBoss.defeatedAt,
+        hitFlashId: currentBoss.hitFlashId + 1,
+        slashMarks: nextSlashMarks
       };
 
-      bossRef.current = defeated ? null : nextBoss;
-      setBoss(defeated ? null : nextBoss);
+      bossRef.current = nextBoss;
+      setBoss(nextBoss);
       bossGestureHitRef.current = true;
 
       const bossEffects: SliceEffect[] = [
@@ -208,6 +229,13 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
           x: point.x,
           y: point.y - 28,
           text: `+${FINAL_BOSS_CONFIG.scorePerHit}`,
+          color: '#ef4444'
+        }),
+        createEffect({
+          kind: 'splash',
+          x: point.x,
+          y: point.y,
+          asset: '/assets/juice-splash.png',
           color: '#ef4444'
         })
       ];
@@ -218,7 +246,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
             kind: 'combo',
             x: currentBoss.x,
             y: currentBoss.y - currentBoss.radius * 0.76,
-            text: reward.text,
+            text: defeated ? `完美切爆！+${reward.bonus}` : reward.text,
             color: defeated ? '#dc2626' : '#f97316'
           })
         );
@@ -394,7 +422,11 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
         bossSpawnedRef.current = true;
       }
 
-      if (bossRef.current && FINAL_BOSS_CONFIG.movement.enabled) {
+      if (bossRef.current?.defeated && bossRef.current.defeatedAt && now - bossRef.current.defeatedAt >= FINAL_BOSS_CONFIG.explosionHoldMs) {
+        bossRef.current = null;
+      }
+
+      if (bossRef.current && !bossRef.current.defeated && FINAL_BOSS_CONFIG.movement.enabled) {
         bossRef.current = updateFinalBoss(bossRef.current, width, height, delta, now);
       }
 
@@ -562,6 +594,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const isRushMode = timeLeft <= RUSH_MODE_CONFIG.startsAtSeconds;
   const isFinalCountdown = timeLeft <= FINAL_COUNTDOWN_CONFIG.pulseStartsAtSeconds;
   const bossProgress = boss ? (boss.hits / boss.maxHits) * 100 : 0;
+  const bossStage = boss ? (boss.defeated ? 'defeated' : boss.hits >= 20 ? 'critical' : boss.hits >= 10 ? 'damaged' : boss.hits >= 5 ? 'marked' : 'fresh') : 'fresh';
 
   return (
     <main className={`relative min-h-screen overflow-hidden bg-[#f6ffe7] text-emerald-950 ${isShaking ? 'animate-rush-shake' : ''}`}>
@@ -674,7 +707,8 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
               data-boss-y={Math.round(boss.y)}
               data-boss-vx={Math.round(boss.vx)}
               data-boss-vy={Math.round(boss.vy)}
-              className="pointer-events-none absolute z-10"
+              data-boss-stage={bossStage}
+              className={`pointer-events-none absolute z-10 final-boss-shell final-boss-stage-${bossStage}`}
               style={{
                 left: boss.x - boss.radius,
                 top: boss.y - boss.radius,
@@ -684,21 +718,50 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
             >
               <img
                 key={boss.hitFlashId}
-                src={FINAL_BOSS_CONFIG.asset}
+                src={boss.defeated ? FINAL_BOSS_CONFIG.slicedAsset : FINAL_BOSS_CONFIG.asset}
                 alt="Boss 大西瓜"
                 draggable={false}
-                className="final-boss-image h-full w-full object-contain drop-shadow-[0_18px_22px_rgba(127,29,29,0.28)]"
+                className={`final-boss-image h-full w-full object-contain drop-shadow-[0_18px_22px_rgba(127,29,29,0.28)] ${
+                  boss.defeated ? 'final-boss-image-defeated' : ''
+                }`}
               />
+              <span className="final-boss-glow" />
+              {boss.slashMarks.map((mark) => (
+                <span
+                  key={mark.id}
+                  className="final-boss-slash-mark"
+                  style={{
+                    left: `${mark.xPercent}%`,
+                    top: `${mark.yPercent}%`,
+                    width: `${mark.lengthPercent}%`,
+                    opacity: mark.opacity,
+                    transform: `translate(-50%, -50%) rotate(${mark.angle}deg)`
+                  }}
+                />
+              ))}
+              {bossStage === 'damaged' || bossStage === 'critical' || bossStage === 'defeated' ? <span className="final-boss-juice-dot final-boss-juice-dot-a" /> : null}
+              {bossStage === 'critical' || bossStage === 'defeated' ? (
+                <>
+                  <span className="final-boss-juice-dot final-boss-juice-dot-b" />
+                  <span className="final-boss-juice-dot final-boss-juice-dot-c" />
+                </>
+              ) : null}
+              {bossStage === 'critical' && <span className="final-boss-critical-label">快切爆了！</span>}
             </div>
             <div className="pointer-events-none absolute bottom-20 left-1/2 z-20 w-[min(88vw,420px)] -translate-x-1/2 rounded-[8px] border border-white/70 bg-white/78 px-3 py-2 shadow-soft backdrop-blur">
-              <div className="flex items-center justify-between text-xs font-black text-red-700">
-                <span>Boss 大西瓜</span>
+              <div className={`flex items-center justify-between text-xs font-black ${boss.hits >= 20 ? 'text-red-700' : 'text-orange-700'}`}>
+                <span>超大西瓜</span>
                 <span>
                   {boss.hits}/{boss.maxHits}
                 </span>
               </div>
-              <div className="mt-1 h-2 overflow-hidden rounded-full bg-red-100">
-                <div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-500 transition-[width] duration-150" style={{ width: `${bossProgress}%` }} />
+              <div className={`mt-1 h-2 overflow-hidden rounded-full ${boss.hits >= 20 ? 'bg-red-100' : 'bg-orange-100'}`}>
+                <div
+                  className={`h-full rounded-full transition-[width] duration-150 ${
+                    boss.hits >= 20 ? 'animate-boss-progress-hot bg-gradient-to-r from-red-500 to-rose-600' : 'bg-gradient-to-r from-orange-400 to-red-500'
+                  }`}
+                  style={{ width: `${bossProgress}%` }}
+                />
               </div>
             </div>
           </>

@@ -24,6 +24,9 @@ export const FINAL_BOSS_CONFIG = {
   startsAtSeconds: 10,
   scorePerHit: 2,
   maxHits: 30,
+  hitRadiusMultiplier: 1.15,
+  explosionHoldMs: 850,
+  maxSlashMarks: 12,
   asset: '/assets/watermelon.png',
   slicedAsset: '/assets/watermelon-sliced.png',
   radius: {
@@ -189,7 +192,18 @@ export interface FinalBossFruit {
   maxHits: number;
   nextDirectionChangeAt: number;
   defeated: boolean;
+  defeatedAt?: number;
   hitFlashId: number;
+  slashMarks: BossSlashMark[];
+}
+
+export interface BossSlashMark {
+  id: string;
+  xPercent: number;
+  yPercent: number;
+  angle: number;
+  lengthPercent: number;
+  opacity: number;
 }
 
 export interface SlashPoint {

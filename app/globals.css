@@ -161,16 +161,82 @@ img {
 
 @keyframes final-boss-hit {
   0% {
+    translate: 0 0;
     scale: 1;
     filter: saturate(1);
   }
-  42% {
-    scale: 1.08;
-    filter: saturate(1.18) drop-shadow(0 0 16px rgba(248, 113, 113, 0.55));
+  28% {
+    translate: -3px 2px;
+    scale: 0.94;
+    filter: saturate(1.28) brightness(1.06) drop-shadow(0 0 18px rgba(248, 113, 113, 0.62));
+  }
+  58% {
+    translate: 3px -2px;
+    scale: 1.04;
+    filter: saturate(1.22) brightness(1.05) drop-shadow(0 0 18px rgba(248, 113, 113, 0.58));
   }
   100% {
+    translate: 0 0;
     scale: 1;
     filter: saturate(1);
+  }
+}
+
+@keyframes final-boss-critical-shell {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  35% {
+    translate: 1px -1px;
+  }
+  70% {
+    translate: -1px 1px;
+  }
+}
+
+@keyframes final-boss-slash-in {
+  0% {
+    scale: 0.42 1;
+    filter: blur(2px);
+  }
+  35% {
+    scale: 1.14 1;
+    filter: blur(0);
+  }
+  100% {
+    scale: 1 1;
+  }
+}
+
+@keyframes final-boss-burst {
+  0% {
+    opacity: 0.88;
+    scale: 0.84;
+    rotate: -4deg;
+    filter: saturate(1.2) brightness(1.08);
+  }
+  32% {
+    opacity: 1;
+    scale: 1.2;
+    rotate: 3deg;
+    filter: saturate(1.35) brightness(1.16) drop-shadow(0 0 28px rgba(239, 68, 68, 0.72));
+  }
+  100% {
+    opacity: 0.82;
+    scale: 1.02;
+    rotate: 0deg;
+    filter: saturate(1.16) brightness(1.05);
+  }
+}
+
+@keyframes boss-progress-hot {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.22);
   }
 }
 
@@ -311,9 +377,115 @@ img {
 }
 
 .final-boss-image {
+  position: relative;
+  z-index: 1;
   animation:
     final-boss-float 1800ms ease-in-out infinite,
     final-boss-hit 260ms ease-out both;
+}
+
+.final-boss-shell {
+  border-radius: 9999px;
+}
+
+.final-boss-stage-fresh {
+  filter: drop-shadow(0 0 18px rgba(132, 204, 22, 0.48));
+}
+
+.final-boss-stage-marked {
+  filter: saturate(1.08) brightness(1.03) drop-shadow(0 0 20px rgba(248, 113, 113, 0.36));
+}
+
+.final-boss-stage-damaged {
+  filter: saturate(1.2) brightness(1.06) drop-shadow(0 0 24px rgba(248, 113, 113, 0.48));
+}
+
+.final-boss-stage-critical {
+  filter: saturate(1.34) brightness(1.08) drop-shadow(0 0 28px rgba(220, 38, 38, 0.58));
+  animation: final-boss-critical-shell 360ms ease-in-out infinite;
+}
+
+.final-boss-stage-defeated {
+  filter: drop-shadow(0 0 34px rgba(239, 68, 68, 0.76));
+}
+
+.final-boss-image-defeated {
+  animation: final-boss-burst 850ms ease-out both;
+}
+
+.final-boss-glow {
+  position: absolute;
+  inset: 8%;
+  z-index: 0;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(248, 113, 113, 0.24), transparent 68%);
+  opacity: 0.75;
+}
+
+.final-boss-slash-mark {
+  position: absolute;
+  z-index: 3;
+  height: 7px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.96), rgba(254, 202, 202, 0.72), transparent);
+  box-shadow:
+    0 0 9px rgba(255, 255, 255, 0.88),
+    0 0 16px rgba(248, 113, 113, 0.42);
+  mix-blend-mode: screen;
+  transform-origin: center;
+  animation: final-boss-slash-in 420ms ease-out both;
+}
+
+.final-boss-juice-dot {
+  position: absolute;
+  z-index: 2;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 28%, #fecaca, #ef4444 52%, #b91c1c 100%);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.42);
+  opacity: 0.72;
+}
+
+.final-boss-juice-dot-a {
+  left: 28%;
+  top: 34%;
+  width: 10%;
+  height: 8%;
+}
+
+.final-boss-juice-dot-b {
+  right: 27%;
+  top: 47%;
+  width: 8%;
+  height: 7%;
+}
+
+.final-boss-juice-dot-c {
+  left: 47%;
+  bottom: 26%;
+  width: 7%;
+  height: 6%;
+}
+
+.final-boss-critical-label {
+  position: absolute;
+  left: 50%;
+  bottom: -14%;
+  z-index: 4;
+  width: max-content;
+  max-width: 150%;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  background: rgba(220, 38, 38, 0.9);
+  padding: 4px 10px;
+  color: white;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 10px 24px rgba(127, 29, 29, 0.28);
+}
+
+.animate-boss-progress-hot {
+  animation: boss-progress-hot 540ms ease-in-out infinite;
 }
 
 .animate-result-in {

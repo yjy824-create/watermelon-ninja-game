@@ -134,11 +134,13 @@ export function isOutOfBounds(item: FlyingItem, width: number, height: number): 
 }
 
 export function isFinalBossHit(boss: FinalBossFruit, point: SlashPoint, previous?: SlashPoint): boolean {
+  const hitRadius = boss.radius * FINAL_BOSS_CONFIG.hitRadiusMultiplier;
+
   if (previous) {
-    return distancePointToSegment(boss.x, boss.y, previous.x, previous.y, point.x, point.y) <= boss.radius;
+    return distancePointToSegment(boss.x, boss.y, previous.x, previous.y, point.x, point.y) <= hitRadius;
   }
 
-  return Math.hypot(boss.x - point.x, boss.y - point.y) <= boss.radius;
+  return Math.hypot(boss.x - point.x, boss.y - point.y) <= hitRadius;
 }
 
 function getBossSpeed(width: number): number {
@@ -187,7 +189,8 @@ export function createFinalBoss(width: number, height: number, now: number): Fin
     maxHits: FINAL_BOSS_CONFIG.maxHits,
     nextDirectionChangeAt: getNextDirectionChangeAt(now),
     defeated: false,
-    hitFlashId: 0
+    hitFlashId: 0,
+    slashMarks: []
   };
 }
 
