@@ -1,4 +1,5 @@
 import {
+  BOMB_SMOOTHING_CONFIG,
   BOMB_TYPE,
   COMBO_BONUS,
   DifficultyStage,
@@ -7,7 +8,8 @@ import {
   FRUIT_TYPES,
   FinalBossFruit,
   FlyingItem,
-  FlyingItemKind
+  FlyingItemKind,
+  SlashPoint
 } from './gameConfig';
 
 function clamp(value: number, min: number, max: number): number {
@@ -49,6 +51,40 @@ export function randomBatchSize(stage: DifficultyStage): number {
   return stage.minBatchSize + Math.floor(Math.random() * range);
 }
 
+export interface BombSpawnDecisionInput {
+  now: number;
+  gameStartedAt: number;
+  lastBombSpawnAt: number;
+  bombChance: number;
+  randomValue?: number;
+}
+
+export function shouldSpawnBombInBatch({
+  now,
+  gameStartedAt,
+  lastBombSpawnAt,
+  bombChance,
+  randomValue
+}: BombSpawnDecisionInput): boolean {
+  if (!BOMB_SMOOTHING_CONFIG.enabled) {
+    return (randomValue ?? Math.random()) < bombChance;
+  }
+
+  const timeSinceStart = now - gameStartedAt;
+  const timeSinceBomb = now - lastBombSpawnAt;
+  if (timeSinceBomb < BOMB_SMOOTHING_CONFIG.minIntervalMs) return false;
+
+  const shouldForceBomb =
+    timeSinceStart >= BOMB_SMOOTHING_CONFIG.gracePeriodMs && timeSinceBomb >= BOMB_SMOOTHING_CONFIG.forceIfNoBombForMs;
+  if (shouldForceBomb) return true;
+
+  if (!BOMB_SMOOTHING_CONFIG.allowRandomFromStart && timeSinceStart < BOMB_SMOOTHING_CONFIG.gracePeriodMs) {
+    return false;
+  }
+
+  return (randomValue ?? Math.random()) < bombChance;
+}
+
 function selectWeightedFruit(): (typeof FRUIT_TYPES)[number] {
   const totalWeight = FRUIT_TYPES.reduce((total, fruit) => total + FRUIT_SPAWN_WEIGHTS[fruit.type], 0);
   let roll = Math.random() * totalWeight;
@@ -61,8 +97,13 @@ function selectWeightedFruit(): (typeof FRUIT_TYPES)[number] {
   return FRUIT_TYPES[0];
 }
 
-export function createFlyingItem(width: number, height: number, stage: DifficultyStage): FlyingItem {
-  const isBomb = Math.random() < stage.bombChance;
+export function createFlyingItem(
+  width: number,
+  height: number,
+  stage: DifficultyStage,
+  options: { forceKind?: 'bomb' | 'fruit' } = {}
+): FlyingItem {
+  const isBomb = options.forceKind === 'bomb' || (options.forceKind !== 'fruit' && Math.random() < stage.bombChance);
   const selected: FlyingItemKind = isBomb ? BOMB_TYPE : selectWeightedFruit();
   const x = 36 + Math.random() * Math.max(1, width - 72);
   const centerBias = x < width / 2 ? 1 : -1;
@@ -90,6 +131,14 @@ export function createFlyingItem(width: number, height: number, stage: Difficult
 
 export function isOutOfBounds(item: FlyingItem, width: number, height: number): boolean {
   return item.y > height + item.radius + 110 || item.x < -120 || item.x > width + 120;
+}
+
+export function isFinalBossHit(boss: FinalBossFruit, point: SlashPoint, previous?: SlashPoint): boolean {
+  if (previous) {
+    return distancePointToSegment(boss.x, boss.y, previous.x, previous.y, point.x, point.y) <= boss.radius;
+  }
+
+  return Math.hypot(boss.x - point.x, boss.y - point.y) <= boss.radius;
 }
 
 function getBossSpeed(width: number): number {

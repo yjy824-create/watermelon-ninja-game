@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import SoundToggle from './SoundToggle';
 import {
+  BOMB_SMOOTHING_CONFIG,
   DifficultyStage,
   FINAL_COUNTDOWN_CONFIG,
   FINAL_BOSS_CONFIG,
@@ -17,11 +18,13 @@ import {
 import {
   createFinalBoss,
   createFlyingItem,
-  distancePointToSegment,
   getComboBonus,
   getGestureFruitScore,
+  isFinalBossHit,
   isOutOfBounds,
   randomBatchSize,
+  shouldSpawnBombInBatch,
+  distancePointToSegment,
   updateFinalBoss
 } from '@/lib/gamePhysics';
 import { playSound } from '@/lib/sound';
@@ -95,6 +98,8 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
   const runningRef = useRef(true);
   const lastFrameAtRef = useRef(0);
   const endAtRef = useRef(0);
+  const gameStartedAtRef = useRef(0);
+  const lastBombSpawnAtRef = useRef(Number.NEGATIVE_INFINITY);
   const nextSpawnAtRef = useRef(0);
   const gestureFruitHitsRef = useRef(0);
   const gestureBaseScoreRef = useRef(0);
@@ -231,6 +236,18 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     [pushEffects, soundEnabled, triggerShake, updateScore]
   );
 
+  const tryHitFinalBoss = useCallback(
+    (point: SlashPoint, previous?: SlashPoint) => {
+      const currentBoss = bossRef.current;
+      if (!currentBoss || currentBoss.defeated || bossGestureHitRef.current) return;
+
+      if (isFinalBossHit(currentBoss, point, previous)) {
+        hitFinalBoss(point);
+      }
+    },
+    [hitFinalBoss]
+  );
+
   const commitGestureScore = useCallback(() => {
     clearGestureTimer();
 
@@ -302,6 +319,8 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     slashRef.current = [];
     effectsRef.current = [];
     endAtRef.current = startAt + GAME_DURATION_SECONDS * 1000;
+    gameStartedAtRef.current = startAt;
+    lastBombSpawnAtRef.current = Number.NEGATIVE_INFINITY;
     nextSpawnAtRef.current = startAt + 250;
     lastFrameAtRef.current = startAt;
 
@@ -311,9 +330,24 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
 
       const spawnCount = randomBatchSize(stage);
       const nextItems: FlyingItem[] = [];
+      const shouldIncludeBomb = shouldSpawnBombInBatch({
+        now,
+        gameStartedAt: gameStartedAtRef.current,
+        lastBombSpawnAt: lastBombSpawnAtRef.current,
+        bombChance: stage.bombChance
+      });
+      const bombCount = shouldIncludeBomb ? Math.min(BOMB_SMOOTHING_CONFIG.maxBombsPerBatch, spawnCount) : 0;
 
-      for (let index = 0; index < spawnCount; index += 1) {
-        nextItems.push(createFlyingItem(rect.width, rect.height, stage));
+      for (let index = 0; index < bombCount; index += 1) {
+        nextItems.push(createFlyingItem(rect.width, rect.height, stage, { forceKind: 'bomb' }));
+      }
+
+      if (bombCount > 0) {
+        lastBombSpawnAtRef.current = now;
+      }
+
+      for (let index = bombCount; index < spawnCount; index += 1) {
+        nextItems.push(createFlyingItem(rect.width, rect.height, stage, { forceKind: 'fruit' }));
       }
 
       itemsRef.current = [...itemsRef.current, ...nextItems];
@@ -422,6 +456,7 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     const point = getPointFromEvent(event, stageRef.current);
     slashRef.current = [point];
     setSlash([...slashRef.current]);
+    tryHitFinalBoss(point);
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -437,21 +472,18 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
     const previous = slashRef.current.at(-1);
     slashRef.current.push(point);
 
-    if (!previous) return;
+    if (!previous) {
+      tryHitFinalBoss(point);
+      return;
+    }
 
     const newEffects: SliceEffect[] = [];
     let bombHits = 0;
     let fruitHits = 0;
     let bombPenalty = 0;
     let fruitBaseScore = 0;
-    const currentBoss = bossRef.current;
 
-    if (currentBoss && !currentBoss.defeated && !bossGestureHitRef.current) {
-      const bossHitDistance = distancePointToSegment(currentBoss.x, currentBoss.y, previous.x, previous.y, point.x, point.y);
-      if (bossHitDistance <= currentBoss.radius) {
-        hitFinalBoss(point);
-      }
-    }
+    tryHitFinalBoss(point, previous);
 
     itemsRef.current = itemsRef.current.map((item) => {
       if (item.sliced) return item;
@@ -501,6 +533,12 @@ export default function GameCanvas({ bestScore, soundEnabled, onSoundToggle, onF
 
   function endPointer(event: React.PointerEvent<HTMLDivElement>) {
     if (!pointerDownRef.current) return;
+
+    if (runningRef.current && stageRef.current) {
+      const point = getPointFromEvent(event, stageRef.current);
+      const previous = slashRef.current.at(-1);
+      tryHitFinalBoss(point, previous ?? undefined);
+    }
 
     pointerDownRef.current = false;
     bossGestureHitRef.current = false;

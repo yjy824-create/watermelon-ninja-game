@@ -68,6 +68,15 @@ export const COMBO_BONUS = {
   threeOrMoreFruits: 5
 } as const;
 
+export const BOMB_SMOOTHING_CONFIG = {
+  enabled: true,
+  allowRandomFromStart: true,
+  gracePeriodMs: 5000,
+  forceIfNoBombForMs: 5000,
+  minIntervalMs: 2500,
+  maxBombsPerBatch: 1
+} as const;
+
 export const DIFFICULTY_STAGES = [
   {
     id: 'warmup',
